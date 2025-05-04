@@ -13,6 +13,8 @@
 #include "lvgl.h"
 #include "lvgl_helpers.h"
 
+#include "app.h"
+
 /*********************
  *      DEFINES
  *********************/
@@ -28,7 +30,7 @@ static void guiTask(void *pvParameter);
 /**********************
  *   APPLICATION MAIN
  **********************/
-void app_main() {
+extern "C" void app_main(void) {
 
     /* If you want to use a task to create the graphic, you NEED to create a Pinned task
      * Otherwise there can be problem such as memory corruption and so on.
@@ -51,9 +53,9 @@ static void guiTask(void *pvParameter) {
     /* Initialize SPI or I2C bus used by the drivers */
     lvgl_driver_init();
 
-    lv_color_t* buf1 = heap_caps_malloc(DISP_BUF_SIZE * sizeof(lv_color_t), MALLOC_CAP_DMA);
+    lv_color_t* buf1 = (lv_color_t*)heap_caps_malloc(DISP_BUF_SIZE * sizeof(lv_color_t), MALLOC_CAP_DMA);
     assert(buf1 != NULL);
-    lv_color_t* buf2 = heap_caps_malloc(DISP_BUF_SIZE * sizeof(lv_color_t), MALLOC_CAP_DMA);
+    lv_color_t* buf2 = (lv_color_t*)heap_caps_malloc(DISP_BUF_SIZE * sizeof(lv_color_t), MALLOC_CAP_DMA);
     assert(buf2 != NULL);
 
     static lv_disp_buf_t disp_buf;
@@ -84,14 +86,13 @@ static void guiTask(void *pvParameter) {
     /* Create and start a periodic timer interrupt to call lv_tick_inc */
     const esp_timer_create_args_t periodic_timer_args = {
         .callback = &lv_tick_task,
-        .arg = NULL,
         .name = "periodic_gui"
     };
     esp_timer_handle_t periodic_timer;
     ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, LV_TICK_PERIOD_MS * 1000));
 
-    /* TODO: Create the application */
+    helloWorldApp();
 
     while (1) {
         /* Delay 1 tick (assumes FreeRTOS tick is 10ms */
@@ -108,4 +109,10 @@ static void guiTask(void *pvParameter) {
     free(buf1);
     free(buf2);
     vTaskDelete(NULL);
+}
+
+static void lv_tick_task(void *arg) {
+    (void) arg;
+
+    lv_tick_inc(LV_TICK_PERIOD_MS);
 }
