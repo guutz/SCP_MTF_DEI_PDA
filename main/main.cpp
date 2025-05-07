@@ -1,4 +1,3 @@
-// #include "Arduino.h"
 #include "ui_manager.h"
 #include "sd_manager.h"
 
@@ -13,7 +12,6 @@
 #include "freertos/semphr.h"
 #include "esp_system.h"
 #include "driver/gpio.h"
-#include "i2c_manager.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 
