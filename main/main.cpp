@@ -1,4 +1,7 @@
 // #include "Arduino.h"
+#include "ui_manager.h"
+#include "sd_manager.h"
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,10 +13,42 @@
 #include "freertos/semphr.h"
 #include "esp_system.h"
 #include "driver/gpio.h"
-#include "lvgl.h"
-#include "lvgl_helpers.h"
+#include "i2c_manager.h"
+#include "esp_log.h"
+#include "nvs_flash.h"
 
-#include "app.h"
+//                       ..,,,,,,,,,,,,,,,,.                                                                      
+//                      .%@&%%##########%%@@(.                                                                    
+//                      ,&&(,............*%@&,                                                                    
+//                   .,/%@(,             .*#@#*.                                                                  
+//                .,#@@%/,.               ..,(&@&/..                                                              
+//             .*%@@(,.          ,//.         .,*#@@#,                                                            
+//            ,#@%*,.          .,#@@/.           .*(&@/.                                                          
+//          .(@%*.        .,*#%&@@@@@@&%(*..        ,/&&*.                                                        
+//        .,&@/.       ,(&@@@@@@@@@@@@@@@@@@%*.       ,#@#.                                                       
+//       .#@%*.      *%@@@@&(*,,*%@@(,.,/#@@@@@(.      ./@%/                                                      
+//      .(@&*.     ./@@@@#,..   ,#@@/.   .,/%@@@&,      ,(@&*                                                     
+//      *@#/.    .*#@@@(,      .*%@@(,      .*%@@@/,     ,(&&.                                                    
+//     ,&&*.     *@@@&*.      .(@@@@@@*       ,(@@@&,    .,/@(.                                                   
+//     /@(..    ,&@@@/.        .(@@@@/.        ,#@@@#.    .,%&,                                                   
+//    .#@/.     /@@@%,          ,#@@(.         ./&@@&,    .,#@*                                                   
+//    .%&*.    .(@@@(.           .**.           ,%@@@*    .,/@/                                                   
+//    .%&*.    .#@@@(.   ,//((###,  /###((/*.   ,%@@@*    ../@(                                                   
+//    .#@*.    ./@@@#,  .*&@@@@@/.  ,#@@@@@%,. .*&@@&,    .,(@/.                                                  
+//   .(@@*      ,&@@@/,*(&@@@@@/.    ,#@@@@@&(,*(@@@#.    ..#@#,.                                                 
+// .(@@/,       ./@@@@@@@#/*/%,.      ./%**/%@@@@@@&*       .*%@&,                                                
+//  /@#,       .*%@@@@@#*.                  ./%@@@@@%*       .*%&,                                                
+//  .*@#,      .#&(/#@@@&/..              ,*#@@@&(/(%/      .*&&,                                                 
+//   ./@(,        .../&@@@*,.       ..,(&@@@@%,.         .*%&,                                                  
+//     *@#,.          .*%@@@@@@&&%%%&&@@@@@@@(,           ,*&%,                                                   
+//      ,&%/.            .,*#&@@@@@@@@@@%(,,.           .,#.                                                    
+//       ,%@(,..,*,.          .........          ..,,...*%&(.                                                     
+//        ,(@#%@@@@%*,                         .,/&@@@%@*.                                                      
+//         .*(*,..*/&@&(*,.               ..,*#&@%*,,,*/#,                                                        
+//                  ..*(&@@&%(/*******/(#&@@@%/,.                                                                 
+//                       ..,*//##%%%%#(/*,...                                                                     
+//                              ......                                                                            
+
 
 /*********************
  *      DEFINES
@@ -31,6 +66,8 @@ static void guiTask(void *pvParameter);
  *   APPLICATION MAIN
  **********************/
 extern "C" void app_main(void) {
+
+    nvs_flash_init();
 
     /* If you want to use a task to create the graphic, you NEED to create a Pinned task
      * Otherwise there can be problem such as memory corruption and so on.
@@ -52,6 +89,8 @@ static void guiTask(void *pvParameter) {
 
     /* Initialize SPI or I2C bus used by the drivers */
     lvgl_driver_init();
+
+    sd_init();
 
     lv_color_t* buf1 = (lv_color_t*)heap_caps_malloc(DISP_BUF_SIZE * sizeof(lv_color_t), MALLOC_CAP_DMA);
     assert(buf1 != NULL);
@@ -92,7 +131,7 @@ static void guiTask(void *pvParameter) {
     ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, LV_TICK_PERIOD_MS * 1000));
 
-    helloWorldApp();
+    ui_init();
 
     while (1) {
         /* Delay 1 tick (assumes FreeRTOS tick is 10ms */

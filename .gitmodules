@@ -4,3 +4,9 @@
 [submodule "components/lvgl"]
 	path = components/lvgl
 	url = https://github.com/lvgl/lvgl.git
+[submodule "lzrtag-esp-components"]
+	path = lzrtag-esp-components
+	url = https://github.com/lzrtag/lzrtag-esp-components.git
+[submodule "XasCode"]
+	path = XasCode
+	url = https://github.com/XasWorks/XasCode.git
