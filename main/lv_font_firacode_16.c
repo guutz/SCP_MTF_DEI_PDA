@@ -534,7 +534,7 @@ static lv_font_fmt_txt_dsc_t font_dsc = {
 #endif
 };
 
-extern const lv_font_t lv_font_montserrat_16;
+// extern const lv_font_t lv_font_montserrat_16;
 
 
 /*-----------------
