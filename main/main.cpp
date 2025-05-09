@@ -1,5 +1,6 @@
 #include "ui_manager.h"
 #include "sd_manager.h"
+#include "stuff.h"
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -8,12 +9,13 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_freertos_hooks.h"
 #include "freertos/semphr.h"
 #include "esp_system.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "lvgl.h"
+#include "lvgl_helpers.h"
 
 //                       ..,,,,,,,,,,,,,,,,.                                                                      
 //                      .%@&%%##########%%@@(.                                                                    
@@ -51,14 +53,14 @@
 /*********************
  *      DEFINES
  *********************/
-#define TAG "main"
+static const char *TAG = "main";
 #define LV_TICK_PERIOD_MS 1
 
 /**********************
  *  STATIC PROTOTYPES
  **********************/
 static void lv_tick_task(void *arg);
-static void guiTask(void *pvParameter);
+static void lvglTask(void *pvParameter);
 
 /**********************
  *   APPLICATION MAIN
@@ -66,11 +68,10 @@ static void guiTask(void *pvParameter);
 extern "C" void app_main(void) {
 
     nvs_flash_init();
-
     /* If you want to use a task to create the graphic, you NEED to create a Pinned task
      * Otherwise there can be problem such as memory corruption and so on.
-     * NOTE: When not using Wi-Fi nor Bluetooth you can pin the guiTask to core 0 */
-    xTaskCreatePinnedToCore(guiTask, "gui", 4096*2, NULL, 0, NULL, 1);
+     * NOTE: When not using Wi-Fi nor Bluetooth you can pin the lvglTask to core 0 */
+    xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 16, NULL, 0, NULL, 1);
 }
 
 /* Creates a semaphore to handle concurrent call to lvgl stuff
@@ -78,17 +79,13 @@ extern "C" void app_main(void) {
  * you should lock on the very same semaphore! */
 SemaphoreHandle_t xGuiSemaphore;
 
-static void guiTask(void *pvParameter) {
+static void lvglTask(void *pvParameter) {
 
     (void) pvParameter;
     xGuiSemaphore = xSemaphoreCreateMutex();
 
     lv_init();
-
-    /* Initialize SPI or I2C bus used by the drivers */
     lvgl_driver_init();
-
-    sd_init();
 
     lv_color_t* buf1 = (lv_color_t*)heap_caps_malloc(DISP_BUF_SIZE * sizeof(lv_color_t), MALLOC_CAP_DMA);
     assert(buf1 != NULL);
@@ -96,21 +93,11 @@ static void guiTask(void *pvParameter) {
     assert(buf2 != NULL);
 
     static lv_disp_buf_t disp_buf;
-
     uint32_t size_in_px = DISP_BUF_SIZE;
-
-    /* Initialize the working buffer depending on the selected display.
-     * NOTE: buf2 == NULL when using monochrome displays. */
     lv_disp_buf_init(&disp_buf, buf1, buf2, size_in_px);
-
     lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
     disp_drv.flush_cb = disp_driver_flush;
-
-#if defined CONFIG_DISPLAY_ORIENTATION_PORTRAIT || defined CONFIG_DISPLAY_ORIENTATION_PORTRAIT_INVERTED
-    disp_drv.rotated = 1;
-#endif
-
     disp_drv.buffer = &disp_buf;
     lv_disp_drv_register(&disp_drv);
 
@@ -129,7 +116,10 @@ static void guiTask(void *pvParameter) {
     ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, LV_TICK_PERIOD_MS * 1000));
 
-    ui_init();
+    lv_task_t* sd_init_task = lv_task_create(sd_init, 0, LV_TASK_PRIO_MID, NULL);
+    lv_task_once(sd_init_task);
+    lv_task_t* ui_init_task = lv_task_create(ui_init, 0, LV_TASK_PRIO_LOWEST, NULL);
+    lv_task_once(ui_init_task);
 
     while (1) {
         /* Delay 1 tick (assumes FreeRTOS tick is 10ms */
