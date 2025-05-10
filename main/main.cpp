@@ -18,6 +18,8 @@
 #include "lvgl.h"
 #include "lvgl_helpers.h"
 
+#include <xnm/net_helpers.h>
+
 //                       ..,,,,,,,,,,,,,,,,.                                                                      
 //                      .%@&%%##########%%@@(.                                                                    
 //                      ,&&(,............*%@&,                                                                    
