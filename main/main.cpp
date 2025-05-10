@@ -18,6 +18,9 @@
 #include "lvgl.h"
 #include "lvgl_helpers.h"
 
+#include "i2c_manager.h"
+#include "mcp23008.h"
+
 //                       ..,,,,,,,,,,,,,,,,.                                                                      
 //                      .%@&%%##########%%@@(.                                                                    
 //                      ,&&(,............*%@&,                                                                    
@@ -57,9 +60,22 @@ static void lv_tick_task(void *arg);
 static void lvglTask(void *pvParameter);
 SemaphoreHandle_t xGuiSemaphore;
 
+mcp23008_t mcp23008_device = {
+    .port = I2C_NUM_0,
+    .address = 0x20,
+    .current = 0
+};
+
 
 extern "C" void app_main(void) {
     nvs_flash_init();
+
+    ESP_LOGI(TAG_MAIN, "Initializing I2C manager.");
+    ESP_ERROR_CHECK(i2c_manager_init(I2C_NUM_0));
+    ESP_LOGI(TAG_MAIN, "Initializing MCP23008.");
+    ESP_ERROR_CHECK(mcp23008_init(&mcp23008_device));
+
+    ESP_LOGI(TAG_MAIN, "Creating GUI task.");
     xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 16, NULL, 5, NULL, 1);
 }
 

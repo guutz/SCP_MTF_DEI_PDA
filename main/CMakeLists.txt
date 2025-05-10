@@ -8,5 +8,7 @@ idf_component_register(
     "ui_manager.cpp"
     "sd_manager.cpp"
     "main.cpp"
+    "../components/ESP32-MCP23008/mcp23008.c"
     INCLUDE_DIRS "."
+    "../components/ESP32-MCP23008/include"
 )
