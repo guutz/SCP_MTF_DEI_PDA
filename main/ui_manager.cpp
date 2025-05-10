@@ -6,6 +6,7 @@
 #include "lvgl_helpers.h"
 #include "ui_manager.h"
 #include "sd_manager.h" 
+#include "stuff.h"
 #include "esp_log.h"
 #include <cinttypes>
 #include <string> 
@@ -82,35 +83,42 @@ typedef struct {
 void ui_styles_init(void) {
     // Default Screen Background Style
     lv_style_init(&style_default_screen_bg);
-    lv_style_set_bg_color(&style_default_screen_bg, LV_STATE_DEFAULT, lv_color_hex(0x000000));
+    lv_style_set_bg_color(&style_default_screen_bg, LV_STATE_DEFAULT, TERMINAL_COLOR_BACKGROUND);
     lv_style_set_bg_opa(&style_default_screen_bg, LV_STATE_DEFAULT, LV_OPA_COVER);
 
     // Default Label Style (for titles, static text items on menus)
     lv_style_init(&style_default_label);
-    lv_style_set_text_font(&style_default_label, LV_STATE_DEFAULT, &lv_font_firacode_16);
-    lv_style_set_text_color(&style_default_label, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF)); // White text
+    lv_style_set_text_font(&style_default_label, LV_STATE_DEFAULT, TERMINAL_FONT);
+    lv_style_set_text_color(&style_default_label, LV_STATE_DEFAULT, TERMINAL_COLOR_FOREGROUND); // Using green
     lv_style_set_text_opa(&style_default_label, LV_STATE_DEFAULT, LV_OPA_COVER);
-    lv_style_set_text_line_space(&style_default_label, LV_STATE_DEFAULT, 2);
+    lv_style_set_text_line_space(&style_default_label, LV_STATE_DEFAULT, TERMINAL_LABEL_LINE_SPACE);
 
     // Default Button Style (Normal and Pressed States)
     lv_style_init(&style_default_button);
-    lv_style_set_radius(&style_default_button, LV_STATE_DEFAULT, 5);
-    // Normal state
-    lv_style_set_bg_opa(&style_default_button, LV_STATE_DEFAULT, LV_OPA_COVER);
-    lv_style_set_bg_color(&style_default_button, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));   // White background for button
-    lv_style_set_text_color(&style_default_button, LV_STATE_DEFAULT, lv_color_hex(0x000000)); // Black text for button label
-    lv_style_set_text_opa(&style_default_button, LV_STATE_DEFAULT, LV_OPA_COVER);
-    lv_style_set_text_font(&style_default_button, LV_STATE_DEFAULT, &lv_font_firacode_16);
-    // Pressed state
-    lv_style_set_bg_color(&style_default_button, LV_STATE_PRESSED, lv_color_hex(0xDDDDDD)); // Light gray when pressed
-    lv_style_set_bg_opa(&style_default_button, LV_STATE_PRESSED, LV_OPA_COVER);
-    lv_style_set_text_color(&style_default_button, LV_STATE_PRESSED, lv_color_hex(0x000000)); // Keep text black for pressed state
+    lv_style_set_radius(&style_default_button, LV_STATE_DEFAULT, TERMINAL_BUTTON_RADIUS);
 
-    // Style for transparent containers (used to wrap static labels)
+    // Normal state
+    lv_style_set_bg_opa(&style_default_button, LV_STATE_DEFAULT, TERMINAL_BUTTON_BG_OPA);
+    lv_style_set_bg_color(&style_default_button, LV_STATE_DEFAULT, TERMINAL_COLOR_BACKGROUND); // Transparent, relies on border
+    lv_style_set_border_width(&style_default_button, LV_STATE_DEFAULT, TERMINAL_BUTTON_BORDER_WIDTH);
+    lv_style_set_border_color(&style_default_button, LV_STATE_DEFAULT, TERMINAL_COLOR_BUTTON_BORDER);
+    lv_style_set_text_color(&style_default_button, LV_STATE_DEFAULT, TERMINAL_COLOR_BUTTON_TEXT);
+    lv_style_set_text_opa(&style_default_button, LV_STATE_DEFAULT, LV_OPA_COVER);
+    lv_style_set_text_font(&style_default_button, LV_STATE_DEFAULT, TERMINAL_FONT);
+    lv_style_set_pad_all(&style_default_button, LV_STATE_DEFAULT, TERMINAL_BUTTON_INNER_PADDING);
+
+
+    // Pressed state
+    lv_style_set_bg_opa(&style_default_button, LV_STATE_PRESSED, LV_OPA_COVER); // Make background visible on press
+    lv_style_set_bg_color(&style_default_button, LV_STATE_PRESSED, TERMINAL_COLOR_BUTTON_PRESSED_BG);
+    lv_style_set_text_color(&style_default_button, LV_STATE_PRESSED, TERMINAL_COLOR_BUTTON_PRESSED_TEXT);
+    lv_style_set_border_color(&style_default_button, LV_STATE_PRESSED, TERMINAL_COLOR_BUTTON_PRESSED_BORDER); // Change border on press
+
+    // Style for transparent containers (used to wrap static labels) - remains the same
     lv_style_init(&style_transparent_container);
     lv_style_set_bg_opa(&style_transparent_container, LV_STATE_DEFAULT, LV_OPA_TRANSP);
     lv_style_set_border_width(&style_transparent_container, LV_STATE_DEFAULT, 0);
-    lv_style_set_pad_all(&style_transparent_container, LV_STATE_DEFAULT, 0); 
+    lv_style_set_pad_all(&style_transparent_container, LV_STATE_DEFAULT, 0);
 }
 
 // Main UI screen loading function
@@ -236,17 +244,17 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
 
 
     lv_obj_t *title_label = lv_label_create(screen, NULL);
-    lv_obj_add_style(title_label, LV_LABEL_PART_MAIN, &style_default_label); 
+    lv_obj_add_style(title_label, LV_LABEL_PART_MAIN, &style_default_label);
     lv_label_set_text(title_label, definition->title.c_str());
-    lv_obj_set_width(title_label, lv_obj_get_width(screen) - 20); 
-    lv_label_set_long_mode(title_label, LV_LABEL_LONG_SROLL_CIRC); 
+    lv_obj_set_width(title_label, lv_obj_get_width(screen) - (2 * TERMINAL_PADDING_HORIZONTAL)); // Use new padding
+    lv_label_set_long_mode(title_label, LV_LABEL_LONG_SROLL_CIRC);
     lv_label_set_align(title_label, LV_LABEL_ALIGN_CENTER);
-    lv_obj_align(title_label, NULL, LV_ALIGN_IN_TOP_MID, 0, 10); 
+    lv_obj_align(title_label, NULL, LV_ALIGN_IN_TOP_MID, 0, TERMINAL_PADDING_VERTICAL_TITLE_TOP); // Use new padding
 
-    int item_y_offset = lv_obj_get_y(title_label) + lv_obj_get_height_fit(title_label) + 15;
-    const int item_spacing = 5; 
-    const int button_height = 30; 
-    const lv_coord_t horizontal_padding = 20; 
+    int item_y_offset = lv_obj_get_y(title_label) + lv_obj_get_height_fit(title_label) + TERMINAL_PADDING_VERTICAL_AFTER_TITLE; // Use new padding
+    const int item_spacing = TERMINAL_ITEM_SPACING;                               // Use new spacing
+    const int button_height = TERMINAL_BUTTON_HEIGHT;                             // Use new height
+    const lv_coord_t horizontal_padding = TERMINAL_PADDING_HORIZONTAL;           // Use new padding
 
     for (const auto& item_def_from_vector : definition->items) {
         if (item_def_from_vector.render_type == RENDER_AS_STATIC_LABEL) {
@@ -447,6 +455,9 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
     lv_obj_add_style(text_page, LV_PAGE_PART_BG, &style_default_screen_bg); 
     lv_obj_add_style(text_page, LV_PAGE_PART_SCROLLABLE, &style_default_screen_bg); 
     lv_page_set_scrl_layout(text_page, LV_LAYOUT_COLUMN_LEFT);
+    
+    lv_obj_set_style_local_bg_color(text_page, LV_PAGE_PART_SCROLLBAR, LV_STATE_DEFAULT, TERMINAL_COLOR_FOREGROUND);
+    lv_obj_set_style_local_bg_opa(text_page, LV_PAGE_PART_SCROLLBAR, LV_STATE_DEFAULT, LV_OPA_COVER);
 
 
     lv_obj_t *text_content_label_ts = lv_label_create(text_page, NULL); 
