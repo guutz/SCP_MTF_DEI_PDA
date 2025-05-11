@@ -6,6 +6,13 @@
 #include "freertos/semphr.h"
 #include "lvgl.h" // Needed for lv_font_t and lv_color_t
 
+#include "xasin/BatteryManager.h"
+#include <xasin/audio.h>
+#include <xasin/neocontroller.h>
+#include "xasin/mqtt/Handler.h"
+#define WIFI_STATION_SSID "Dabney Lounge"
+#define WIFI_STATION_PASSWD "dabneyvictory"
+
 // Declare the fonts you intend to use
 // LV_FONT_DECLARE(lv_font_firacode_8);
 // LV_FONT_DECLARE(lv_font_firacode_16); // Keep if you might switch back or use it elsewhere
