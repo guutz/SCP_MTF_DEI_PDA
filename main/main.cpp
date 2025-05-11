@@ -52,17 +52,53 @@
 //                       ..,*//##%%%%#(/*,...                                                                     
 //                              ......                                                                            
 
-static const char *TAG_MAIN = "main"; // Changed TAG
+static const char *TAG_MAIN = "main";
 #define LV_TICK_PERIOD_MS 1
 
 static void lv_tick_task(void *arg);
 static void lvglTask(void *pvParameter);
 SemaphoreHandle_t xGuiSemaphore;
 
+void get_formatted_current_time(char *buf, size_t buf_len, const char *format) {
+    if (!buf || buf_len == 0) return;
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo); // Thread-safe version of localtime
+    strftime(buf, buf_len, format, &timeinfo);
+}
+
+static lv_obj_t *time_display_label = NULL; // Global for the time label
+
+static void time_update_lv_task(lv_task_t *task) {
+    if (time_display_label) {
+        char time_buf[64];
+        get_formatted_current_time(time_buf, sizeof(time_buf), "%H:%M:%S");
+        lv_label_set_text(time_display_label, time_buf);
+    }
+}
+
+
+esp_err_t event_handler(void *context, system_event_t *event) {
+	Xasin::MQTT::Handler::try_wifi_reconnect(event);
+
+	// mqtt.wifi_handler(event);
+
+	return ESP_OK;
+}
+
 
 extern "C" void app_main(void) {
     nvs_flash_init();
-    xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 16, NULL, 5, NULL, 1);
+
+    tcpip_adapter_init();
+    esp_event_loop_init(event_handler, 0);
+
+    // XNM::NetHelpers::init_global_r3_ca();
+    Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
+
+
+    xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 8, NULL, 5, NULL, 1);
 }
 
 
@@ -113,6 +149,27 @@ static void lvglTask(void *pvParameter) {
     // Or, make sd_init blocking or have parse_menu_definition_file call sd_init if not done.
     // The lv_task_create and lv_task_once are non-blocking ways to schedule.
     // For now, ui_init contains the call to parse_menu_definition_file, which itself checks if SD is ready.
+
+    // Create a label for time display (e.g., on the system layer or a base screen)
+    // Ensure this happens after lv_init() and LVGL is ready
+    // For simplicity, let's try adding to system layer if available,
+    // otherwise, you'd add it to your main screen in ui_init
+    setenv("TZ", "PST8PDT,M3.2.0,M11.1.0", 1);
+    tzset();
+    lv_obj_t* target_parent_for_time = lv_disp_get_layer_sys(NULL);
+    if (!target_parent_for_time) {
+        target_parent_for_time = lv_scr_act(); // Fallback to current screen if sys layer not used/available
+    }
+
+    if (target_parent_for_time) {
+        time_display_label = lv_label_create(target_parent_for_time, NULL);
+        // Style it using definitions from stuff.h
+        lv_obj_set_style_local_text_font(time_display_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, TERMINAL_FONT);
+        lv_obj_set_style_local_text_color(time_display_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, TERMINAL_COLOR_FOREGROUND_ALT); // Using white for time
+        lv_obj_align(time_display_label, NULL, LV_ALIGN_IN_BOTTOM_LEFT, 0, 0); // Position it
+        lv_label_set_text(time_display_label, "Starting...");
+        lv_task_create(time_update_lv_task, 1000, LV_TASK_PRIO_LOW, NULL); // Update every second
+    }
 
     ESP_LOGI(TAG_MAIN, "Creating UI init task.");
     // ui_init will call parse_menu_definition_file and then load the splash screen.
