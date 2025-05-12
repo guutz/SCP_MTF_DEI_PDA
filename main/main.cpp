@@ -19,6 +19,7 @@
 #include "lvgl_helpers.h"
 
 #include <xnm/net_helpers.h>
+#include "ota_manager.h" // Include the new OTA manager
 
 #include "i2c_manager.h"
 #include "mcp23008.h"
@@ -86,6 +87,13 @@ esp_err_t event_handler(void *context, system_event_t *event) {
 	Xasin::MQTT::Handler::try_wifi_reconnect(event);
 
 	// mqtt.wifi_handler(event);
+    // Example: Listen for MQTT messages to trigger OTA
+    // This is a simplified example. You'd integrate this with your Xasin::MQTT::Handler
+    // and parse the message topic/payload appropriately.
+    // For instance, in your MQTT message callback:
+    // if (strcmp(topic, "yourdevice/ota/update") == 0) {
+    //     trigger_ota_update();
+    // }
 
 	return ESP_OK;
 }
@@ -115,6 +123,11 @@ extern "C" void app_main(void) {
 
     ESP_LOGI(TAG_MAIN, "Creating GUI task.");
     xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 8, NULL, 5, NULL, 1);
+
+    // For now, let's add a manual trigger for testing OTA after 30 seconds
+    // Remove this in production and use MQTT or another trigger
+    vTaskDelay(pdMS_TO_TICKS(30000)); 
+    trigger_ota_update();
 }
 
 

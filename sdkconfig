@@ -1407,6 +1407,16 @@ CONFIG_PROJECT_NAME="DEV_PROJECT"
 # CONFIG_AUTOCONFIG_DEVICE_NAME is not set
 # end of XNM NetHelpers
 
+#
+# Github OTA Configuration
+#
+CONFIG_MAX_FILENAME_LEN=64
+CONFIG_MAX_URL_LEN=128
+CONFIG_GITHUB_HOSTNAME="api.github.com"
+CONFIG_GITHUB_OWNER="Fishwaldo"
+CONFIG_GITHUB_REPO="esp_ghota"
+# end of Github OTA Configuration
+
 CONFIG_HAVE_I2C_MANAGER=y
 
 #

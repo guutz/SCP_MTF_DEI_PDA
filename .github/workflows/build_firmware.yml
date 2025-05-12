@@ -1,0 +1,59 @@
+name: Build ESP32 Firmware
+
+on:
+  workflow_dispatch: # Allows manual triggering
+    inputs:
+      git_ref:
+        description: 'Git ref (branch, tag, or commit) to build. Defaults to the default branch.'
+        required: false
+        # Default will be the repository's default branch when run manually from UI without specifying.
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.ref }} # Use input ref, fallback to default ref
+          submodules: 'recursive' # Important if you have git submodules like esp_ghota
+
+      - name: Set up ESP-IDF
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v4.4.5 # Matches your project's IDF version
+          target: esp32 # Matches your project's target
+
+      - name: Build project
+        run: |
+          echo "IDF_PATH: $IDF_PATH"
+          echo "IDF_TOOLS_PATH: $IDF_TOOLS_PATH"
+          echo "PATH: $PATH"
+          . $IDF_PATH/export.sh
+          idf.py build
+
+      - name: Upload firmware artifact (for all builds)
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-artifacts
+          path: |
+            build/SCP_MTF_DEI_PDA.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+            build/ota_data_initial.bin
+
+      - name: Create Release and Upload Firmware (on tag ref)
+        # This step will now only run if the workflow is manually dispatched
+        # AND the 'git_ref' input provided is a tag starting with 'v'.
+        # Or if you manually run it from a tag ref in the GitHub UI.
+        if: startsWith(github.event.inputs.git_ref || github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/SCP_MTF_DEI_PDA.bin
+            build/partition_table/partition-table.bin
+          # You can customize the release name and body
+          # name: "Release ${{ github.ref_name }}"
+          # body: "Automated release for ${{ github.ref_name }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

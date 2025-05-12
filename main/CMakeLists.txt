@@ -8,5 +8,6 @@ idf_component_register(
     "ui_manager.cpp"
     "sd_manager.cpp"
     "main.cpp"
+    "ota_manager.cpp"
     INCLUDE_DIRS "."
 )
