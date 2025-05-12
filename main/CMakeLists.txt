@@ -8,5 +8,8 @@ idf_component_register(
     "ui_manager.cpp"
     "sd_manager.cpp"
     "main.cpp"
+    "mcp23008_wrapper.cpp"
+    "cd4053b_wrapper.cpp"
+    "joystick.cpp"  # Added joystick source file
     INCLUDE_DIRS "."
 )
