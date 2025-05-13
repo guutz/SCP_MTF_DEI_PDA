@@ -1,3 +1,0 @@
-[submodule "ESP32/esp-libopus"]
-	path = ESP32/esp-libopus
-	url = git@github.com:XasWorks/esp-libopus.git

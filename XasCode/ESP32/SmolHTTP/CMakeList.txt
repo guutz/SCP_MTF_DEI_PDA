@@ -1,2 +1,0 @@
-idf_component_register(SRCS "Client.cpp" "Endpoint.cpp" "HTTPPropChannel.cpp" "Server.cpp"
-                       INCLUDE_DIRS "include")
