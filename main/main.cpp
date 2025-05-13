@@ -19,10 +19,14 @@
 #include "lvgl_helpers.h"
 
 #include <xnm/net_helpers.h>
-#include "ota_manager.h" // Include the new OTA manager
+#include "ota_manager.h"
+#include "esp_wifi.h"
 
 #include "i2c_manager.h"
 #include "mcp23008.h"
+#include "mcp23008_wrapper.h"
+#include "cd4053b_wrapper.h" // Added CD4053B wrapper include
+#include "joystick.h"        // Added Joystick/ADC include
 
 //                       ..,,,,,,,,,,,,,,,,.                                                                      
 //                      .%@&%%##########%%@@(.                                                                    
@@ -61,7 +65,11 @@ static const char *TAG_MAIN = "main";
 
 static void lv_tick_task(void *arg);
 static void lvglTask(void *pvParameter);
+static void peripheralsTask(void *pvParameter);
 SemaphoreHandle_t xGuiSemaphore;
+
+// Flag to indicate if Wi-Fi stop was intentional (e.g., for ADC readings)
+static volatile bool g_wifi_intentional_stop = false;
 
 void get_formatted_current_time(char *buf, size_t buf_len, const char *format) {
     if (!buf || buf_len == 0) return;
@@ -90,8 +98,6 @@ esp_err_t event_handler(void *context, system_event_t *event) {
     // If Wi-Fi was stopped intentionally, don't try to reconnect on disconnect event
     if (event->event_id == SYSTEM_EVENT_STA_DISCONNECTED && g_wifi_intentional_stop) {
         ESP_LOGI(TAG_MAIN, "Wi-Fi intentionally disconnected, skipping reconnect attempt.");
-        // Optionally inform MQTT handler that it's an intentional disconnect if it has such a feature
-        // For now, we just prevent Xasin::MQTT::Handler::try_wifi_reconnect
     } else {
         Xasin::MQTT::Handler::try_wifi_reconnect(event);
     }
@@ -106,6 +112,31 @@ esp_err_t event_handler(void *context, system_event_t *event) {
     // }
 
 	return ESP_OK;
+}
+
+// Function to enable/disable Wi-Fi for prioritizing dual-axis joystick readings
+void set_joystick_dual_axis_priority(bool prioritize_dual_axis) {
+    if (prioritize_dual_axis) {
+        ESP_LOGI(TAG_MAIN, "Prioritizing dual-axis joystick: Stopping Wi-Fi.");
+        g_wifi_intentional_stop = true; // Signal that the stop is intentional
+        esp_err_t stop_err = esp_wifi_stop();
+        if (stop_err == ESP_OK) {
+            ESP_LOGI(TAG_MAIN, "Wi-Fi stopped successfully for ADC2 priority.");
+        } else {
+            ESP_LOGE(TAG_MAIN, "Failed to stop Wi-Fi: %s", esp_err_to_name(stop_err));
+            // If stopping fails, we might still have ADC2 issues.
+            // Consider checking esp_wifi_get_mode to confirm if it's truly off if robust handling is needed.
+        }
+    } else {
+        ESP_LOGI(TAG_MAIN, "Restoring normal Wi-Fi operation.");
+        g_wifi_intentional_stop = false; // Clear the flag before starting
+        esp_err_t start_err = esp_wifi_start(); // This will trigger events for the handler to reconnect
+        if (start_err == ESP_OK) {
+            ESP_LOGI(TAG_MAIN, "Wi-Fi start initiated. MQTT handler should reconnect.");
+        } else {
+            ESP_LOGE(TAG_MAIN, "Failed to start Wi-Fi: %s", esp_err_to_name(start_err));
+        }
+    }
 }
 
 mcp23008_t mcp23008_device = {
@@ -125,17 +156,57 @@ extern "C" void app_main(void) {
     Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
 
 
+    ESP_LOGI(TAG_MAIN, "Creating peripherals task.");
+    xTaskCreatePinnedToCore(peripheralsTask, "peripherals", 1024 * 2, NULL, 5, NULL, 1);
+    ESP_LOGI(TAG_MAIN, "Creating GUI task.");
+    xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 8, NULL, 5, NULL, 1);
+}
 
+static void peripheralsTask(void *pvParameter) {
+    (void) pvParameter;
     ESP_LOGI(TAG_MAIN, "Initializing I2C manager.");
     ESP_ERROR_CHECK(i2c_manager_init(I2C_NUM_0));
-    ESP_LOGI(TAG_MAIN, "Initializing MCP23008.");
-    ESP_ERROR_CHECK(mcp23008_init(&mcp23008_device));
+    ESP_LOGI(TAG_MAIN, "Initializing MCP23008 wrapper.");
 
+    // Initial IODIR and GPPU are now set within mcp23008_wrapper_init using defaults
+    ESP_ERROR_CHECK(mcp23008_wrapper_init(&mcp23008_device));
+
+    // Initialize Joystick and ADC
+    ESP_LOGI(TAG_MAIN, "Initializing Joystick and ADC.");
+    ESP_ERROR_CHECK(joystick_init());
+
+    // Set initial states for CD4053B switches using named paths
+    // These correspond to setting S1, S2, and S3 to LOW (path 0 for each)
+    // Joystick X (S1) and Y (S3) will be selected by joystick_read_state() as needed.
+    // Set other switches to a known default if necessary.
+    ESP_LOGI(TAG_MAIN, "Setting initial CD4053B paths for non-joystick/battery use.");
+    // Example: Set S2 to its default path if it's not joystick/battery related.
+    cd4053b_select_named_path(&mcp23008_device, CD4053B_S2_PATH_B0_ACCESSORY_A);
+    // Ensure joystick/battery paths are NOT active by default if joystick_read/battery_read are not called immediately
+    // Or, ensure the first call to joystick_read/battery_read correctly sets its path.
+    // For instance, ensure S1 is initially set for Joystick X if that's the primary use before battery reading.
+    cd4053b_select_named_path(&mcp23008_device, CD4053B_S1_PATH_A0_JOYSTICK_AXIS1);
+    cd4053b_select_named_path(&mcp23008_device, CD4053B_S3_PATH_C0_JOYSTICK_AXIS2);
+
+    JoystickState_t current_joystick_state;
+  
     ESP_LOGI(TAG_MAIN, "Creating GUI task.");
     xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 8, NULL, 5, NULL, 1);
     
-    // OTA updates are now triggered from the menu system
-    // via the trigger_ota_update_from_menu function
+    while (1) {
+        // Read Joystick State
+        esp_err_t joy_ret = joystick_read_state(&mcp23008_device, &current_joystick_state);
+        if (joy_ret == ESP_OK) {
+            ESP_LOGI(TAG_MAIN, "Joystick: X=%d, Y=%d, Btn=%s", 
+                     current_joystick_state.x, 
+                     current_joystick_state.y, 
+                     current_joystick_state.button_pressed ? "Pressed" : "Released");
+        } else {
+            ESP_LOGE(TAG_MAIN, "Failed to read joystick state: %s", esp_err_to_name(joy_ret));
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Read every second
+    }
 }
 
 
