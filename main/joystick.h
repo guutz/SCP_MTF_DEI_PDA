@@ -5,6 +5,7 @@
 #include "esp_adc_cal.h"
 #include "mcp23008_wrapper.h" // For mcp23008_t and MCP23008_NamedPin
 #include "cd4053b_wrapper.h" // For cd4053b_select_named_path and CD4053B_NamedPath
+#include "lvgl.h" // Added for LVGL integration
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,6 +67,33 @@ esp_err_t joystick_read_state(mcp23008_t *mcp, JoystickState_t *state);
  * @return ESP_OK on success, or an error code on failure.
  */
 esp_err_t battery_read_voltage(mcp23008_t *mcp, float *voltage);
+
+/**
+ * @brief Initializes the joystick input for LVGL.
+ *
+ * @param mcp_dev Pointer to the initialized MCP23008 device structure.
+ *                This is needed if joystick_read_state requires it.
+ */
+void lvgl_joystick_input_init(mcp23008_t *mcp_dev);
+
+/**
+ * @brief Gets the LVGL input group associated with the joystick.
+ *
+ * @return Pointer to the LVGL group.
+ */
+lv_group_t *lvgl_joystick_get_group(void);
+
+#ifndef USE_ADC1_FOR_JOYSTICK_Y
+/**
+ * @brief Enables/disables Wi-Fi to prioritize ADC2 for dual-axis joystick readings.
+ *
+ * This function should be called when ADC2 is used for one of the joystick axes
+ * and Wi-Fi interference is a concern.
+ *
+ * @param prioritize_dual_axis True to stop Wi-Fi and prioritize ADC2, false to restore Wi-Fi.
+ */
+void set_joystick_dual_axis_priority(bool prioritize_dual_axis);
+#endif // USE_ADC1_FOR_JOYSTICK_Y
 
 #ifdef __cplusplus
 }

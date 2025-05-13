@@ -2,8 +2,13 @@
 #include "esp_log.h"
 #include "driver/adc.h"
 #include "esp_adc_cal.h" // For ADC calibration
+#include "lvgl.h"        // Added for LVGL integration
+#include "esp_wifi.h"    // Added for Wi-Fi functions
 
 static const char *TAG_JOYSTICK = "joystick";
+
+// Extern declaration for the global Wi-Fi intentional stop flag defined in main.cpp
+extern volatile bool g_wifi_intentional_stop;
 
 // ADC Calibration
 static esp_adc_cal_characteristics_t adc_chars_axis1;
@@ -15,6 +20,127 @@ static bool adc_calibrated = false;
 // R1 = 100k, R2 = 33k
 // Factor = (100 + 33) / 33 = 133 / 33 = 4.030303
 #define BATTERY_VOLTAGE_DIVIDER_FACTOR 4.030303f
+
+// LVGL Integration
+static lv_indev_t *indev_keypad;
+static lv_group_t *g;
+static uint32_t last_key_lvgl = 0;
+static lv_indev_state_t last_state_lvgl = LV_INDEV_STATE_REL;
+
+// Deadzone and threshold for joystick analog to digital conversion
+#define JOYSTICK_DEADZONE_LOW  1000 // Values below this are considered neutral
+#define JOYSTICK_DEADZONE_HIGH 3000 // Values above this are considered neutral
+#define JOYSTICK_THRESHOLD_LOW   500  // Lower boundary for active range
+#define JOYSTICK_THRESHOLD_HIGH  3500 // Upper boundary for active range
+
+
+static bool joystick_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data) { // Changed return type to bool
+    mcp23008_t *current_mcp_dev = (mcp23008_t *)drv->user_data; // RETRIEVE from user_data
+    static JoystickState_t joy_state;
+
+    if (!current_mcp_dev) { 
+        data->state = LV_INDEV_STATE_REL;
+        data->key = 0; // Ensure key is cleared
+        return false; // No data to read
+    }
+
+    esp_err_t ret = joystick_read_state(current_mcp_dev, &joy_state);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG_JOYSTICK, "LVGL: Failed to read joystick state: %s", esp_err_to_name(ret));
+        data->state = LV_INDEV_STATE_REL; // Report release on error
+        data->key = 0; // Ensure key is cleared
+        return false; // No data to read
+    }
+
+    uint32_t act_key = 0;
+    lv_indev_state_t act_state = LV_INDEV_STATE_REL;
+
+    // Button press
+    if (joy_state.button_pressed) {
+        act_key = LV_KEY_ENTER;
+        act_state = LV_INDEV_STATE_PR;
+    }
+    // Joystick movements
+    else if (joy_state.y < JOYSTICK_THRESHOLD_LOW) { // Up
+        act_key = LV_KEY_UP;
+        act_state = LV_INDEV_STATE_PR;
+    } else if (joy_state.y > JOYSTICK_THRESHOLD_HIGH) { // Down
+        act_key = LV_KEY_DOWN;
+        act_state = LV_INDEV_STATE_PR;
+    } else if (joy_state.x < JOYSTICK_THRESHOLD_LOW) { // Left
+        act_key = LV_KEY_LEFT;
+        act_state = LV_INDEV_STATE_PR;
+    } else if (joy_state.x > JOYSTICK_THRESHOLD_HIGH) { // Right
+        act_key = LV_KEY_RIGHT;
+        act_state = LV_INDEV_STATE_PR;
+    }
+
+    // Logic for press and release
+    if (act_state == LV_INDEV_STATE_PR) {
+        // A key is currently pressed
+        if (last_state_lvgl == LV_INDEV_STATE_REL || last_key_lvgl != act_key) {
+            // It's a new press or a different key is pressed
+            data->key = act_key;
+            data->state = LV_INDEV_STATE_PR;
+            last_key_lvgl = act_key;
+            last_state_lvgl = LV_INDEV_STATE_PR;
+        } else {
+            // Key is still held, report pressed state but LVGL handles repeat internally for keypad
+            data->key = last_key_lvgl; // Keep reporting the currently pressed key
+            data->state = LV_INDEV_STATE_PR;
+            // last_state_lvgl remains LV_INDEV_STATE_PR
+        }
+    } else {
+        // No key is currently physically pressed
+        if (last_state_lvgl == LV_INDEV_STATE_PR) {
+            // A key was pressed before, now it's released
+            data->key = last_key_lvgl; // Report release of the last pressed key
+            data->state = LV_INDEV_STATE_REL;
+            // last_key_lvgl remains the same until a new press
+            last_state_lvgl = LV_INDEV_STATE_REL;
+        } else {
+            // No key pressed now, and no key was pressed before
+            data->key = 0; // No key active
+            data->state = LV_INDEV_STATE_REL;
+            last_state_lvgl = LV_INDEV_STATE_REL;
+        }
+    }
+    return false; // Indicate that there is no more data to read in this call
+}
+
+void lvgl_joystick_input_init(mcp23008_t *mcp_dev) {
+    if (!mcp_dev) {
+        ESP_LOGE(TAG_JOYSTICK, "MCP23008 device pointer is NULL for LVGL joystick init.");
+        return;
+    }
+
+    static lv_indev_drv_t indev_drv_joystick; // Make it static or global
+    lv_indev_drv_init(&indev_drv_joystick);
+    indev_drv_joystick.type = LV_INDEV_TYPE_KEYPAD;
+    indev_drv_joystick.read_cb = joystick_read_cb;
+    indev_drv_joystick.user_data = mcp_dev; // ASSIGN mcp_dev to user_data
+    indev_keypad = lv_indev_drv_register(&indev_drv_joystick);
+
+    if (!indev_keypad) {
+        ESP_LOGE(TAG_JOYSTICK, "Failed to register LVGL joystick input device.");
+        return;
+    }
+     ESP_LOGI(TAG_JOYSTICK, "LVGL Joystick input device registered.");
+
+    g = lv_group_create();
+    if (!g) {
+        ESP_LOGE(TAG_JOYSTICK, "Failed to create LVGL group for joystick.");
+        // Consider how to handle this error, perhaps by not setting the group.
+        return;
+    }
+    lv_indev_set_group(indev_keypad, g);
+    ESP_LOGI(TAG_JOYSTICK, "LVGL Joystick group created and assigned.");
+}
+
+lv_group_t *lvgl_joystick_get_group(void) {
+    return g;
+}
+
 
 esp_err_t joystick_init(void) {
     esp_err_t ret;
@@ -216,3 +342,29 @@ esp_err_t battery_read_voltage(mcp23008_t *mcp, float *voltage) {
     }
     return ESP_OK;
 }
+
+#ifndef USE_ADC1_FOR_JOYSTICK_Y
+// Function to enable/disable Wi-Fi for prioritizing dual-axis joystick readings
+void set_joystick_dual_axis_priority(bool prioritize_dual_axis) {
+    if (prioritize_dual_axis) {
+        ESP_LOGI(TAG_JOYSTICK, "Prioritizing dual-axis joystick (ADC2): Stopping Wi-Fi.");
+        g_wifi_intentional_stop = true; // Signal that the stop is intentional
+        esp_err_t stop_err = esp_wifi_stop();
+        if (stop_err == ESP_OK) {
+            ESP_LOGI(TAG_JOYSTICK, "Wi-Fi stopped successfully for ADC2 priority.");
+        } else {
+            ESP_LOGE(TAG_JOYSTICK, "Failed to stop Wi-Fi: %s", esp_err_to_name(stop_err));
+            // If stopping fails, we might still have ADC2 issues.
+        }
+    } else {
+        ESP_LOGI(TAG_JOYSTICK, "Restoring normal Wi-Fi operation.");
+        g_wifi_intentional_stop = false; // Clear the flag before starting
+        esp_err_t start_err = esp_wifi_start(); // This will trigger events for the handler to reconnect
+        if (start_err == ESP_OK) {
+            ESP_LOGI(TAG_JOYSTICK, "Wi-Fi start initiated. MQTT handler should reconnect.");
+        } else {
+            ESP_LOGE(TAG_JOYSTICK, "Failed to start Wi-Fi: %s", esp_err_to_name(start_err));
+        }
+    }
+}
+#endif // USE_ADC1_FOR_JOYSTICK_Y
