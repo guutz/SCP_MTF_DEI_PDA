@@ -66,10 +66,8 @@ static const char *TAG_MAIN = "main";
 static void lv_tick_task(void *arg);
 static void lvglTask(void *pvParameter);
 static void peripheralsTask(void *pvParameter);
+static void wifi_init_task(void *pvParameter); 
 SemaphoreHandle_t xGuiSemaphore;
-
-// Flag to indicate if Wi-Fi stop was intentional (e.g., for ADC readings)
-static volatile bool g_wifi_intentional_stop = false;
 
 void get_formatted_current_time(char *buf, size_t buf_len, const char *format) {
     if (!buf || buf_len == 0) return;
@@ -149,17 +147,33 @@ mcp23008_t mcp23008_device = {
 extern "C" void app_main(void) {
     nvs_flash_init();
 
+
     tcpip_adapter_init();
     esp_event_loop_init(event_handler, 0);
 
-    // XNM::NetHelpers::init_global_r3_ca();
-    Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
+    // Create a task to initialize Wi-Fi after a delay
+    ESP_LOGI(TAG_MAIN, "Creating Wi-Fi init task.");
+    xTaskCreatePinnedToCore(wifi_init_task, "wifi_init", 4096, NULL, 5, NULL, 0);
 
 
     ESP_LOGI(TAG_MAIN, "Creating peripherals task.");
     xTaskCreatePinnedToCore(peripheralsTask, "peripherals", 1024 * 2, NULL, 5, NULL, 1);
     ESP_LOGI(TAG_MAIN, "Creating GUI task.");
     xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 8, NULL, 5, NULL, 1);
+}
+
+// New task to initialize Wi-Fi after a delay
+static void wifi_init_task(void *pvParameter) {
+    (void)pvParameter;
+    ESP_LOGI(TAG_MAIN, "Wi-Fi init task started, waiting for 10 seconds...");
+    vTaskDelay(pdMS_TO_TICKS(10000)); // Wait for 10 seconds
+
+    ESP_LOGI(TAG_MAIN, "Initializing Wi-Fi...");
+    // XNM::NetHelpers::init_global_r3_ca(); 
+    Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
+
+    ESP_LOGI(TAG_MAIN, "Wi-Fi init task finished, deleting self.");
+    vTaskDelete(NULL); // Delete the task once Wi-Fi is started
 }
 
 static void peripheralsTask(void *pvParameter) {
@@ -189,9 +203,6 @@ static void peripheralsTask(void *pvParameter) {
     cd4053b_select_named_path(&mcp23008_device, CD4053B_S3_PATH_C0_JOYSTICK_AXIS2);
 
     JoystickState_t current_joystick_state;
-  
-    ESP_LOGI(TAG_MAIN, "Creating GUI task.");
-    xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 8, NULL, 5, NULL, 1);
     
     while (1) {
         // Read Joystick State
@@ -201,11 +212,20 @@ static void peripheralsTask(void *pvParameter) {
                      current_joystick_state.x, 
                      current_joystick_state.y, 
                      current_joystick_state.button_pressed ? "Pressed" : "Released");
+
+            if (current_joystick_state.button_pressed) {
+                mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_1, true);
+                mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_2, false);
+            }
+            else {
+                mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_1, false);
+                mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_2, true);
+            }
         } else {
             ESP_LOGE(TAG_MAIN, "Failed to read joystick state: %s", esp_err_to_name(joy_ret));
         }
 
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Read every second
+        vTaskDelay(pdMS_TO_TICKS(100)); // Read every 100 milliseconds
     }
 }
 
