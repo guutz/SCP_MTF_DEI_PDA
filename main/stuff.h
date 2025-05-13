@@ -13,6 +13,15 @@
 #define WIFI_STATION_SSID "Dabney Lounge"
 #define WIFI_STATION_PASSWD "dabneyvictory"
 
+// Global flag to track intentional WiFi disconnect
+extern volatile bool g_wifi_intentional_stop;
+
+// Forward declarations for WiFi and OTA functions
+void trigger_ota_update(void); // From ota_manager.cpp
+void trigger_ota_update_from_menu(void); // From ui_manager.cpp
+void toggle_wifi_from_menu(void); // From ui_manager.cpp
+void show_wifi_status_from_menu(void); // From ui_manager.cpp
+
 // Declare the fonts you intend to use
 // LV_FONT_DECLARE(lv_font_firacode_8);
 // LV_FONT_DECLARE(lv_font_firacode_16); // Keep if you might switch back or use it elsewhere

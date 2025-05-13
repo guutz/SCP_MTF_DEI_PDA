@@ -83,8 +83,18 @@ static void time_update_lv_task(lv_task_t *task) {
 }
 
 
+// Flag to track if WiFi was stopped intentionally
+volatile bool g_wifi_intentional_stop = false;
+
 esp_err_t event_handler(void *context, system_event_t *event) {
-	Xasin::MQTT::Handler::try_wifi_reconnect(event);
+    // If Wi-Fi was stopped intentionally, don't try to reconnect on disconnect event
+    if (event->event_id == SYSTEM_EVENT_STA_DISCONNECTED && g_wifi_intentional_stop) {
+        ESP_LOGI(TAG_MAIN, "Wi-Fi intentionally disconnected, skipping reconnect attempt.");
+        // Optionally inform MQTT handler that it's an intentional disconnect if it has such a feature
+        // For now, we just prevent Xasin::MQTT::Handler::try_wifi_reconnect
+    } else {
+        Xasin::MQTT::Handler::try_wifi_reconnect(event);
+    }
 
 	// mqtt.wifi_handler(event);
     // Example: Listen for MQTT messages to trigger OTA
@@ -123,11 +133,9 @@ extern "C" void app_main(void) {
 
     ESP_LOGI(TAG_MAIN, "Creating GUI task.");
     xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 8, NULL, 5, NULL, 1);
-
-    // For now, let's add a manual trigger for testing OTA after 30 seconds
-    // Remove this in production and use MQTT or another trigger
-    vTaskDelay(pdMS_TO_TICKS(30000)); 
-    trigger_ota_update();
+    
+    // OTA updates are now triggered from the menu system
+    // via the trigger_ota_update_from_menu function
 }
 
 

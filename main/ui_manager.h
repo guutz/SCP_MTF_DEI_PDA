@@ -4,6 +4,8 @@
 #include "lvgl.h"
 #include "menu_structures.h" // For MenuScreenDefinition, G_MenuScreens etc.
 
+extern volatile bool g_wifi_intentional_stop;
+
 // Define a function pointer type for functions that create screens.
 // These creator functions will typically use global state (like G_TargetMenuNameForCreation)
 // set prior to their invocation.
@@ -57,5 +59,25 @@ void ui_load_active_target_screen(lv_scr_load_anim_t anim_type,
 
 void example_predefined_function_1(void);
 void example_predefined_function_2(void);
+
+/**
+ * @brief Trigger OTA update from the menu
+ * This function is registered with G_PredefinedFunctions to allow
+ * the OTA update to be triggered from a menu button
+ */
+void trigger_ota_update_from_menu(void);
+
+/**
+ * @brief Toggle WiFi on or off from the menu
+ * This function is registered with G_PredefinedFunctions to allow
+ * WiFi to be toggled from a menu button
+ */
+void toggle_wifi_from_menu(void);
+
+/**
+ * @brief Display WiFi status information
+ * Shows current WiFi connection status, IP address, and signal strength
+ */
+void show_wifi_status_from_menu(void);
 
 #endif // UI_MANAGER_H
