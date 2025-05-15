@@ -13,6 +13,8 @@
 #include <vector> 
 #include <map>    
 
+#include "joystick.h" // Added for lvgl_joystick_get_group()
+
 LV_FONT_DECLARE(lv_font_firacode_16);
 LV_IMG_DECLARE(SCP_Foundation);
 
@@ -41,6 +43,9 @@ static void initial_splash_timeout_cb(lv_task_t *task);
 // --- Event handler for dynamically created buttons ---
 static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event);
 
+// Forward declaration for OTA function from ota_manager.cpp
+void trigger_ota_update(void);
+
 
 ///////////////////////////////////////////////
 /////// GLOBAL VARIABLES //////////////////////
@@ -65,6 +70,7 @@ lv_style_t style_default_screen_bg;
 lv_style_t style_default_label; // General purpose label style (e.g., for titles, static text)
 lv_style_t style_default_button;
 lv_style_t style_transparent_container; // For label containers
+lv_style_t style_focused_button; // Style for focused buttons
 
 
 // --- UserData for Buttons ---
@@ -89,7 +95,7 @@ void ui_styles_init(void) {
     // Default Label Style (for titles, static text items on menus)
     lv_style_init(&style_default_label);
     lv_style_set_text_font(&style_default_label, LV_STATE_DEFAULT, TERMINAL_FONT);
-    lv_style_set_text_color(&style_default_label, LV_STATE_DEFAULT, TERMINAL_COLOR_FOREGROUND); // Using green
+    lv_style_set_text_color(&style_default_label, LV_STATE_DEFAULT, TERMINAL_COLOR_FOREGROUND_ALT);
     lv_style_set_text_opa(&style_default_label, LV_STATE_DEFAULT, LV_OPA_COVER);
     lv_style_set_text_line_space(&style_default_label, LV_STATE_DEFAULT, TERMINAL_LABEL_LINE_SPACE);
 
@@ -119,6 +125,9 @@ void ui_styles_init(void) {
     lv_style_set_bg_opa(&style_transparent_container, LV_STATE_DEFAULT, LV_OPA_TRANSP);
     lv_style_set_border_width(&style_transparent_container, LV_STATE_DEFAULT, 0);
     lv_style_set_pad_all(&style_transparent_container, LV_STATE_DEFAULT, 0);
+
+    // Focused Button Style
+    lv_style_set_text_color(&style_default_button, LV_STATE_FOCUSED, lv_color_hex(0xFF0000)); // Red text when focused
 }
 
 // Main UI screen loading function
@@ -153,6 +162,9 @@ void ui_init(lv_task_t *current_init_task) {
 
     G_PredefinedFunctions["diag1"] = example_predefined_function_1;
     G_PredefinedFunctions["diag2"] = example_predefined_function_2;
+    G_PredefinedFunctions["ota_update"] = trigger_ota_update_from_menu;
+    G_PredefinedFunctions["wifi_toggle"] = toggle_wifi_from_menu;
+    G_PredefinedFunctions["wifi_status"] = show_wifi_status_from_menu;
 
     if (parse_menu_definition_file("S:/DEI/menu.txt")) { 
         ESP_LOGI(TAG_UI_MGR, "Successfully parsed menu definitions.");
@@ -256,6 +268,13 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
     const int button_height = TERMINAL_BUTTON_HEIGHT;                             // Use new height
     const lv_coord_t horizontal_padding = TERMINAL_PADDING_HORIZONTAL;           // Use new padding
 
+    lv_group_t* joy_group = lvgl_joystick_get_group();
+    if (joy_group) {
+        lv_group_remove_all_objs(joy_group); // Clear group for the new screen
+    }
+
+    lv_obj_t* first_interactive_object_to_focus = NULL;
+
     for (const auto& item_def_from_vector : definition->items) {
         if (item_def_from_vector.render_type == RENDER_AS_STATIC_LABEL) {
 
@@ -317,8 +336,21 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
             
             lv_obj_set_user_data(btn, btn_ctx);
             lv_obj_set_event_cb(btn, dynamic_button_event_handler);
+
+            if (joy_group) {
+                lv_group_add_obj(joy_group, btn);
+                if (!first_interactive_object_to_focus) {
+                    first_interactive_object_to_focus = btn;
+                }
+            }
         }
     }
+
+    // Set initial focus if an interactive object was identified
+    if (joy_group && first_interactive_object_to_focus) {
+        lv_group_focus_obj(first_interactive_object_to_focus);
+    }
+
     return screen;
 }
 
@@ -340,7 +372,7 @@ static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event) {
                  ctx->item_def.action_target.c_str(), ctx->invoking_parent_for_on_screen.c_str());
 
         screen_create_func_t next_screen_creator = nullptr;
-        lv_scr_load_anim_t anim = LV_SCR_LOAD_ANIM_MOVE_LEFT; 
+        lv_scr_load_anim_t anim = SCREEN_ANIMATION_TYPE_FORWARD; // Use macro
 
         switch (ctx->item_def.action) {
             case ACTION_NAVIGATE_SUBMENU:
@@ -373,7 +405,7 @@ static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event) {
                 break; 
 
             case ACTION_GO_BACK:
-                anim = LV_SCR_LOAD_ANIM_MOVE_RIGHT;
+                anim = SCREEN_ANIMATION_TYPE_BACKWARD; // Use macro
                 if (!ctx->invoking_parent_for_on_screen.empty() && G_MenuScreens.count(ctx->invoking_parent_for_on_screen)) {
                     G_TargetMenuNameForCreation = ctx->invoking_parent_for_on_screen; 
                     
@@ -415,7 +447,7 @@ static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event) {
         }
 
         if (next_screen_creator) {
-            ui_load_active_target_screen(anim, 300, 0, true, next_screen_creator);
+            ui_load_active_target_screen(anim, SCREEN_ANIMATION_DURATION, 0, true, next_screen_creator); // Use macro for duration
         }
 
     } else if (event == LV_EVENT_DELETE) {
@@ -424,6 +456,14 @@ static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event) {
             ESP_LOGD(TAG_UI_MGR, "Deleting ButtonActionContext for: %s", ctx->item_def.text_to_display.c_str());
             delete ctx;
             lv_obj_set_user_data(obj, NULL); 
+        }
+    } else if (event == LV_EVENT_KEY) {
+        uint32_t key = *((uint32_t *)lv_event_get_data()); // Retrieve key directly from event data
+        if (key == LV_KEY_DOWN) {
+            lv_group_focus_next((lv_group_t *)lv_obj_get_group(obj)); // Cast to lv_group_t*
+        }
+        if (key == LV_KEY_UP) {
+            lv_group_focus_prev((lv_group_t *)lv_obj_get_group(obj)); // Cast to lv_group_t*
         }
     }
 }
@@ -469,7 +509,7 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
     if (is_file) {
         esp_err_t read_res = lvgl_display_text_from_sd_file(text_content_label_ts, content.c_str()); 
         if (read_res != ESP_OK) {
-            lv_label_set_text(text_content_label_ts, "Error: Could not load text from file.");
+            lv_label_set_text(text_content_label_ts, "[DATA EXPUNGED]");
         }
     } else {
         lv_label_set_text(text_content_label_ts, content.c_str()); 
@@ -477,22 +517,39 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
 
     lv_obj_t *btn_back = lv_btn_create(screen, NULL);
     lv_obj_add_style(btn_back, LV_BTN_PART_MAIN, &style_default_button);
-    lv_obj_set_size(btn_back, 100, 35); 
+    lv_obj_set_size(btn_back, 300, 35); 
     lv_obj_align(btn_back, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -10);
 
     lv_obj_t *btn_back_label = lv_label_create(btn_back, NULL);
-    lv_label_set_text(btn_back_label, "Back");
+    lv_label_set_text(btn_back_label, "Press Enter To Go Back");
     lv_obj_align(btn_back_label, NULL, LV_ALIGN_CENTER, 0, 0);
 
-    ButtonActionContext* back_btn_ctx = new ButtonActionContext();
-    back_btn_ctx->item_def.action = ACTION_GO_BACK; 
-    back_btn_ctx->item_def.text_to_display = "Back"; 
-    back_btn_ctx->on_screen_name = title; 
-    back_btn_ctx->invoking_parent_for_on_screen = actual_invoking_parent_name; 
+    ButtonActionContext* back_button_ctx = new ButtonActionContext();
+    back_button_ctx->item_def.action = ACTION_GO_BACK; 
+    back_button_ctx->item_def.text_to_display = "Back"; 
+    back_button_ctx->on_screen_name = title; 
+    back_button_ctx->invoking_parent_for_on_screen = actual_invoking_parent_name; 
     
-    lv_obj_set_user_data(btn_back, back_btn_ctx); 
+    lv_obj_set_user_data(btn_back, back_button_ctx); // btn_back gets its own context
     lv_obj_set_event_cb(btn_back, dynamic_button_event_handler);
 
+    // text_page also needs a context if it's going to be handled by dynamic_button_event_handler
+    // to trigger a back action or for any other reason that might lead to context deletion.
+    // We create a new, separate context for it.
+    ButtonActionContext* text_page_action_ctx = new ButtonActionContext();
+    text_page_action_ctx->item_def.action = ACTION_GO_BACK; // Or appropriate action for text_page
+    text_page_action_ctx->item_def.text_to_display = "Back (from text_page)"; // Differentiate for logging if needed
+    text_page_action_ctx->on_screen_name = title;
+    text_page_action_ctx->invoking_parent_for_on_screen = actual_invoking_parent_name;
+
+    lv_obj_set_user_data(text_page, text_page_action_ctx); 
+    lv_obj_set_event_cb(text_page, dynamic_button_event_handler); // This will delete text_page_action_ctx
+
+    lv_group_t* joy_group = lvgl_joystick_get_group();
+    if (joy_group) {
+        lv_group_add_obj(joy_group, text_page);
+        lv_group_focus_obj(text_page);
+    }
     return screen;
 }
 
@@ -503,4 +560,473 @@ void example_predefined_function_1(void) {
 
 void example_predefined_function_2(void) {
     ESP_LOGI(TAG_UI_MGR, "Executed: example_predefined_function_2");
+}
+
+void trigger_ota_update_from_menu(void) {
+    ESP_LOGI(TAG_UI_MGR, "OTA update triggered from menu");
+    
+    // First check if WiFi is enabled (needed for OTA)
+    wifi_mode_t current_mode;
+    esp_err_t err = esp_wifi_get_mode(&current_mode);
+    bool wifi_is_on = (err == ESP_OK && current_mode != WIFI_MODE_NULL);
+    
+    // If WiFi is off, show a dialog to enable it first
+    if (!wifi_is_on) {
+        static lv_style_t modal_style;
+        lv_style_init(&modal_style);
+        lv_style_set_bg_color(&modal_style, LV_STATE_DEFAULT, TERMINAL_COLOR_BACKGROUND);
+        lv_style_set_bg_opa(&modal_style, LV_STATE_DEFAULT, LV_OPA_70);
+        lv_style_set_border_width(&modal_style, LV_STATE_DEFAULT, 0);
+        
+        lv_obj_t *modal_bg = lv_obj_create(lv_scr_act(), NULL);
+        lv_obj_add_style(modal_bg, LV_OBJ_PART_MAIN, &modal_style);
+        lv_obj_set_pos(modal_bg, 0, 0);
+        lv_obj_set_size(modal_bg, LV_HOR_RES, LV_VER_RES);
+        
+        // Create dialog box
+        lv_obj_t *dialog = lv_obj_create(modal_bg, NULL);
+        lv_obj_add_style(dialog, LV_OBJ_PART_MAIN, &style_default_screen_bg);
+        lv_obj_set_size(dialog, LV_HOR_RES * 8 / 10, LV_VER_RES / 3);
+        lv_obj_align(dialog, NULL, LV_ALIGN_CENTER, 0, 0);
+        
+        // Dialog title
+        lv_obj_t *title = lv_label_create(dialog, NULL);
+        lv_label_set_text(title, "WIFI REQUIRED");
+        lv_obj_add_style(title, LV_OBJ_PART_MAIN, &style_default_label);
+        lv_obj_align(title, dialog, LV_ALIGN_IN_TOP_MID, 0, 10);
+        
+        // Dialog message
+        lv_obj_t *msg = lv_label_create(dialog, NULL);
+        lv_label_set_text(msg, "WiFi is currently OFF.\nIt must be enabled for OTA updates.\nEnable WiFi and continue?");
+        lv_obj_add_style(msg, LV_OBJ_PART_MAIN, &style_default_label);
+        lv_obj_align(msg, dialog, LV_ALIGN_CENTER, 0, 0);
+        
+        // Yes button - event handler (enable WiFi and proceed)
+        lv_obj_t *btn_yes = lv_btn_create(dialog, NULL);
+        lv_obj_t *lbl_yes = lv_label_create(btn_yes, NULL);
+        lv_label_set_text(lbl_yes, "YES");
+        lv_obj_add_style(btn_yes, LV_OBJ_PART_MAIN, &style_default_button);
+        lv_obj_align(btn_yes, dialog, LV_ALIGN_IN_BOTTOM_LEFT, 20, -10);
+        
+        lv_obj_set_event_cb(btn_yes, [](lv_obj_t *obj, lv_event_t event) {
+            if (event == LV_EVENT_CLICKED) {
+                // Delete the dialog
+                lv_obj_t *dialog = lv_obj_get_parent(obj);
+                lv_obj_t *modal_bg = lv_obj_get_parent(dialog);
+                lv_obj_del(modal_bg);
+                
+                // Create a status message
+                lv_obj_t *status_msg = lv_label_create(lv_scr_act(), NULL);
+                lv_label_set_text(status_msg, "Enabling WiFi...");
+                lv_obj_add_style(status_msg, LV_OBJ_PART_MAIN, &style_default_label);
+                lv_obj_align(status_msg, NULL, LV_ALIGN_CENTER, 0, 0);
+                
+                // Turn on WiFi and then trigger OTA
+                lv_task_t *wifi_task = lv_task_create([](lv_task_t *task) {
+                    // Clear the intentional stop flag before starting
+                    g_wifi_intentional_stop = false;
+                    
+                    // Re-initialize WiFi with the stored credentials
+                    Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
+                    
+                    lv_obj_t *msg = (lv_obj_t*)task->user_data;
+                    if (msg) {
+                        lv_label_set_text(msg, "WiFi enabled.\nChecking for updates...");
+                        
+                        // Wait a bit for WiFi to connect before starting OTA
+                        lv_task_t *ota_task = lv_task_create([](lv_task_t *ota_task) {
+                            trigger_ota_update();
+                            
+                            lv_obj_t *msg = (lv_obj_t*)ota_task->user_data;
+                            if (msg) {
+                                lv_obj_del(msg);
+                            }
+                            
+                            lv_task_del(ota_task);
+                        }, 5000, LV_TASK_PRIO_MID, NULL);
+                        ota_task->user_data = msg;
+                        lv_task_once(ota_task);
+                    }
+                    
+                    lv_task_del(task);
+                }, 100, LV_TASK_PRIO_MID, NULL);
+                wifi_task->user_data = status_msg;
+                lv_task_once(wifi_task);
+            }
+        });
+        
+        // No button - event handler
+        lv_obj_t *btn_no = lv_btn_create(dialog, NULL);
+        lv_obj_t *lbl_no = lv_label_create(btn_no, NULL);
+        lv_label_set_text(lbl_no, "NO");
+        lv_obj_add_style(btn_no, LV_OBJ_PART_MAIN, &style_default_button);
+        lv_obj_align(btn_no, dialog, LV_ALIGN_IN_BOTTOM_RIGHT, -20, -10);
+        lv_obj_set_event_cb(btn_no, [](lv_obj_t *obj, lv_event_t event) {
+            if (event == LV_EVENT_CLICKED) {
+                // Just delete the dialog
+                lv_obj_t *dialog = lv_obj_get_parent(obj);
+                lv_obj_t *modal_bg = lv_obj_get_parent(dialog);
+                lv_obj_del(modal_bg);
+            }
+        });
+        
+        return; // Exit function early - we'll come back after WiFi is enabled
+    }
+    
+    // WiFi is on, proceed with normal OTA dialog
+    static lv_style_t modal_style;
+    lv_style_init(&modal_style);
+    lv_style_set_bg_color(&modal_style, LV_STATE_DEFAULT, TERMINAL_COLOR_BACKGROUND);
+    lv_style_set_bg_opa(&modal_style, LV_STATE_DEFAULT, LV_OPA_70);
+    lv_style_set_border_width(&modal_style, LV_STATE_DEFAULT, 0);
+    
+    lv_obj_t *modal_bg = lv_obj_create(lv_scr_act(), NULL);
+    lv_obj_add_style(modal_bg, LV_OBJ_PART_MAIN, &modal_style);
+    lv_obj_set_pos(modal_bg, 0, 0);
+    lv_obj_set_size(modal_bg, LV_HOR_RES, LV_VER_RES);
+    
+    // Create dialog box
+    lv_obj_t *dialog = lv_obj_create(modal_bg, NULL);
+    lv_obj_add_style(dialog, LV_OBJ_PART_MAIN, &style_default_screen_bg);
+    lv_obj_set_size(dialog, LV_HOR_RES * 8 / 10, LV_VER_RES / 3);
+    lv_obj_align(dialog, NULL, LV_ALIGN_CENTER, 0, 0);
+    
+    // Dialog title
+    lv_obj_t *title = lv_label_create(dialog, NULL);
+    lv_label_set_text(title, "OTA UPDATE");
+    lv_obj_add_style(title, LV_OBJ_PART_MAIN, &style_default_label);
+    lv_obj_align(title, dialog, LV_ALIGN_IN_TOP_MID, 0, 10);
+    
+    // Dialog message
+    lv_obj_t *msg = lv_label_create(dialog, NULL);
+    lv_label_set_text(msg, "Start firmware update?\nDevice will reboot if update is available.");
+    lv_obj_add_style(msg, LV_OBJ_PART_MAIN, &style_default_label);
+    lv_obj_align(msg, dialog, LV_ALIGN_CENTER, 0, 0);
+    
+    // Yes button - event handler
+    lv_obj_t *btn_yes = lv_btn_create(dialog, NULL);
+    lv_obj_t *lbl_yes = lv_label_create(btn_yes, NULL);
+    lv_label_set_text(lbl_yes, "YES");
+    lv_obj_add_style(btn_yes, LV_OBJ_PART_MAIN, &style_default_button);
+    lv_obj_align(btn_yes, dialog, LV_ALIGN_IN_BOTTOM_LEFT, 20, -10);
+    lv_obj_set_event_cb(btn_yes, [](lv_obj_t *obj, lv_event_t event) {
+        if (event == LV_EVENT_CLICKED) {
+            // Delete the dialog
+            lv_obj_t *dialog = lv_obj_get_parent(obj);
+            lv_obj_t *modal_bg = lv_obj_get_parent(dialog);
+            lv_obj_del(modal_bg);
+            
+            // Create a "checking for updates" message
+            lv_obj_t *update_msg = lv_label_create(lv_scr_act(), NULL);
+            lv_label_set_text(update_msg, "Checking for updates...\nPlease wait.");
+            lv_obj_add_style(update_msg, LV_OBJ_PART_MAIN, &style_default_label);
+            lv_obj_align(update_msg, NULL, LV_ALIGN_CENTER, 0, 0);
+            
+            // Actually trigger the OTA update in a separate task after a short delay
+            // to allow the UI to update
+            lv_task_t *ota_task = lv_task_create([](lv_task_t *task) {
+                // Call the OTA trigger function
+                trigger_ota_update();
+                lv_task_del(task);
+            }, 500, LV_TASK_PRIO_MID, NULL);
+            lv_task_once(ota_task);
+        }
+    });
+    
+    // No button - event handler
+    lv_obj_t *btn_no = lv_btn_create(dialog, NULL);
+    lv_obj_t *lbl_no = lv_label_create(btn_no, NULL);
+    lv_label_set_text(lbl_no, "NO");
+    lv_obj_add_style(btn_no, LV_OBJ_PART_MAIN, &style_default_button);
+    lv_obj_align(btn_no, dialog, LV_ALIGN_IN_BOTTOM_RIGHT, -20, -10);
+    lv_obj_set_event_cb(btn_no, [](lv_obj_t *obj, lv_event_t event) {
+        if (event == LV_EVENT_CLICKED) {
+            // Just delete the dialog
+            lv_obj_t *dialog = lv_obj_get_parent(obj);
+            lv_obj_t *modal_bg = lv_obj_get_parent(dialog);
+            lv_obj_del(modal_bg);
+        }
+    });
+}
+
+void toggle_wifi_from_menu(void) {
+    ESP_LOGI(TAG_UI_MGR, "WiFi toggle triggered from menu");
+    
+    // Get current WiFi status
+    wifi_mode_t current_mode;
+    esp_err_t err = esp_wifi_get_mode(&current_mode);
+    bool wifi_is_on = (err == ESP_OK && current_mode != WIFI_MODE_NULL);
+    
+    // Create a confirmation dialog
+    static lv_style_t modal_style;
+    lv_style_init(&modal_style);
+    lv_style_set_bg_color(&modal_style, LV_STATE_DEFAULT, TERMINAL_COLOR_BACKGROUND);
+    lv_style_set_bg_opa(&modal_style, LV_STATE_DEFAULT, LV_OPA_70);
+    lv_style_set_border_width(&modal_style, LV_STATE_DEFAULT, 0);
+    
+    lv_obj_t *modal_bg = lv_obj_create(lv_scr_act(), NULL);
+    lv_obj_add_style(modal_bg, LV_OBJ_PART_MAIN, &modal_style);
+    lv_obj_set_pos(modal_bg, 0, 0);
+    lv_obj_set_size(modal_bg, LV_HOR_RES, LV_VER_RES);
+    
+    // Create dialog box
+    lv_obj_t *dialog = lv_obj_create(modal_bg, NULL);
+    lv_obj_add_style(dialog, LV_OBJ_PART_MAIN, &style_default_screen_bg);
+    lv_obj_set_size(dialog, LV_HOR_RES * 8 / 10, LV_VER_RES / 3);
+    lv_obj_align(dialog, NULL, LV_ALIGN_CENTER, 0, 0);
+    
+    // Dialog title
+    lv_obj_t *title = lv_label_create(dialog, NULL);
+    lv_label_set_text(title, "WIFI CONTROL");
+    lv_obj_add_style(title, LV_OBJ_PART_MAIN, &style_default_label);
+    lv_obj_align(title, dialog, LV_ALIGN_IN_TOP_MID, 0, 10);
+    
+    // Dialog message
+    lv_obj_t *msg = lv_label_create(dialog, NULL);
+    if (wifi_is_on) {
+        lv_label_set_text(msg, "WiFi is currently ON\nDo you want to turn it OFF?");
+    } else {
+        lv_label_set_text(msg, "WiFi is currently OFF\nDo you want to turn it ON?");
+    }
+    lv_obj_add_style(msg, LV_OBJ_PART_MAIN, &style_default_label);
+    lv_obj_align(msg, dialog, LV_ALIGN_CENTER, 0, 0);
+    
+    // Yes button - event handler
+    lv_obj_t *btn_yes = lv_btn_create(dialog, NULL);
+    lv_obj_t *lbl_yes = lv_label_create(btn_yes, NULL);
+    lv_label_set_text(lbl_yes, "YES");
+    lv_obj_add_style(btn_yes, LV_OBJ_PART_MAIN, &style_default_button);
+    lv_obj_align(btn_yes, dialog, LV_ALIGN_IN_BOTTOM_LEFT, 20, -10);
+    
+    // Store whether wifi is on in the button's user data for the callback
+    lv_obj_set_user_data(btn_yes, (void*)(wifi_is_on ? 1 : 0));
+    
+    lv_obj_set_event_cb(btn_yes, [](lv_obj_t *obj, lv_event_t event) {
+        if (event == LV_EVENT_CLICKED) {
+            // Get the current wifi state from user data
+            bool wifi_is_on = (bool)lv_obj_get_user_data(obj);
+            
+            // Delete the dialog
+            lv_obj_t *dialog = lv_obj_get_parent(obj);
+            lv_obj_t *modal_bg = lv_obj_get_parent(dialog);
+            lv_obj_del(modal_bg);
+            
+            // Create a status message
+            lv_obj_t *status_msg = lv_label_create(lv_scr_act(), NULL);
+            if (wifi_is_on) {
+                lv_label_set_text(status_msg, "Turning WiFi OFF...");
+                lv_obj_add_style(status_msg, LV_OBJ_PART_MAIN, &style_default_label);
+                lv_obj_align(status_msg, NULL, LV_ALIGN_CENTER, 0, 0);
+                
+                // Turn off WiFi in a task to keep UI responsive
+                lv_task_t *wifi_task = lv_task_create([](lv_task_t *task) {
+                    // Set the flag to indicate intentional disconnection
+                    g_wifi_intentional_stop = true;
+                    
+                    // Stop WiFi
+                    esp_err_t stop_err = esp_wifi_stop();
+                    
+                    // Update the message
+                    lv_obj_t *msg = (lv_obj_t*)task->user_data;
+                    if (msg) {
+                        if (stop_err == ESP_OK) {
+                            lv_label_set_text(msg, "WiFi turned OFF");
+                        } else {
+                            lv_label_set_text(msg, "WiFi OFF failed!");
+                            ESP_LOGE(TAG_UI_MGR, "Failed to stop WiFi: %s", esp_err_to_name(stop_err));
+                        }
+                        
+                        // Schedule task to remove the message after 2 seconds
+                        lv_task_t *msg_task = lv_task_create([](lv_task_t *msg_task) {
+                            lv_obj_t *msg = (lv_obj_t*)msg_task->user_data;
+                            if (msg) {
+                                lv_obj_del(msg);
+                            }
+                            lv_task_del(msg_task);
+                        }, 2000, LV_TASK_PRIO_LOW, NULL);
+                        msg_task->user_data = msg;
+                        lv_task_once(msg_task);
+                    }
+                    
+                    lv_task_del(task);
+                }, 100, LV_TASK_PRIO_MID, NULL);
+                wifi_task->user_data = status_msg;
+                lv_task_once(wifi_task);
+            } else {
+                lv_label_set_text(status_msg, "Turning WiFi ON...");
+                lv_obj_add_style(status_msg, LV_OBJ_PART_MAIN, &style_default_label);
+                lv_obj_align(status_msg, NULL, LV_ALIGN_CENTER, 0, 0);
+                
+                // Turn on WiFi in a task to keep UI responsive
+                lv_task_t *wifi_task = lv_task_create([](lv_task_t *task) {
+                    // Clear the intentional stop flag before starting
+                    g_wifi_intentional_stop = false;
+                    
+                    // Re-initialize WiFi with the stored credentials
+                    Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
+                    
+                    // Update the message
+                    lv_obj_t *msg = (lv_obj_t*)task->user_data;
+                    if (msg) {
+                        lv_label_set_text(msg, "WiFi turned ON\nConnecting...");
+                        
+                        // Schedule task to remove the message after 2 seconds
+                        lv_task_t *msg_task = lv_task_create([](lv_task_t *msg_task) {
+                            lv_obj_t *msg = (lv_obj_t*)msg_task->user_data;
+                            if (msg) {
+                                lv_obj_del(msg);
+                            }
+                            lv_task_del(msg_task);
+                        }, 2000, LV_TASK_PRIO_LOW, NULL);
+                        msg_task->user_data = msg;
+                        lv_task_once(msg_task);
+                    }
+                    
+                    lv_task_del(task);
+                }, 100, LV_TASK_PRIO_MID, NULL);
+                wifi_task->user_data = status_msg;
+                lv_task_once(wifi_task);
+            }
+        }
+    });
+    
+    // No button - event handler
+    lv_obj_t *btn_no = lv_btn_create(dialog, NULL);
+    lv_obj_t *lbl_no = lv_label_create(btn_no, NULL);
+    lv_label_set_text(lbl_no, "NO");
+    lv_obj_add_style(btn_no, LV_OBJ_PART_MAIN, &style_default_button);
+    lv_obj_align(btn_no, dialog, LV_ALIGN_IN_BOTTOM_RIGHT, -20, -10);
+    lv_obj_set_event_cb(btn_no, [](lv_obj_t *obj, lv_event_t event) {
+        if (event == LV_EVENT_CLICKED) {
+            // Just delete the dialog
+            lv_obj_t *dialog = lv_obj_get_parent(obj);
+            lv_obj_t *modal_bg = lv_obj_get_parent(dialog);
+            lv_obj_del(modal_bg);
+        }
+    });
+}
+
+void show_wifi_status_from_menu(void) {
+    ESP_LOGI(TAG_UI_MGR, "WiFi status check triggered from menu");
+    
+    // Create a status dialog
+    static lv_style_t modal_style;
+    lv_style_init(&modal_style);
+    lv_style_set_bg_color(&modal_style, LV_STATE_DEFAULT, TERMINAL_COLOR_BACKGROUND);
+    lv_style_set_bg_opa(&modal_style, LV_STATE_DEFAULT, LV_OPA_70);
+    lv_style_set_border_width(&modal_style, LV_STATE_DEFAULT, 0);
+    
+    lv_obj_t *modal_bg = lv_obj_create(lv_scr_act(), NULL);
+    lv_obj_add_style(modal_bg, LV_OBJ_PART_MAIN, &modal_style);
+    lv_obj_set_pos(modal_bg, 0, 0);
+    lv_obj_set_size(modal_bg, LV_HOR_RES, LV_VER_RES);
+    
+    // Create dialog box
+    lv_obj_t *dialog = lv_obj_create(modal_bg, NULL);
+    lv_obj_add_style(dialog, LV_OBJ_PART_MAIN, &style_default_screen_bg);
+    lv_obj_set_size(dialog, LV_HOR_RES * 8 / 10, LV_VER_RES * 2 / 3);
+    lv_obj_align(dialog, NULL, LV_ALIGN_CENTER, 0, 0);
+    
+    // Dialog title
+    lv_obj_t *title = lv_label_create(dialog, NULL);
+    lv_label_set_text(title, "WIFI STATUS");
+    lv_obj_add_style(title, LV_OBJ_PART_MAIN, &style_default_label);
+    lv_obj_align(title, dialog, LV_ALIGN_IN_TOP_MID, 0, 10);
+    
+    // Status message
+    lv_obj_t *msg = lv_label_create(dialog, NULL);
+    lv_label_set_text(msg, "Checking WiFi status...");
+    lv_obj_add_style(msg, LV_OBJ_PART_MAIN, &style_default_label);
+    lv_obj_align(msg, dialog, LV_ALIGN_CENTER, 0, 0);
+    
+    // Get WiFi status and update the message
+    lv_task_t *status_task = lv_task_create([](lv_task_t *task) {
+        lv_obj_t *msg = (lv_obj_t*)task->user_data;
+        
+        if (!msg) {
+            lv_task_del(task);
+            return;
+        }
+        
+        // Check if WiFi is initialized
+        wifi_mode_t mode;
+        esp_err_t err = esp_wifi_get_mode(&mode);
+        
+        char status_buf[256];
+        
+        if (err != ESP_OK || mode == WIFI_MODE_NULL) {
+            if (g_wifi_intentional_stop) {
+                snprintf(status_buf, sizeof(status_buf), "WiFi Status: OFF (INTENTIONAL)\n\n"
+                        "WiFi was manually disabled.\n"
+                        "Use 'Toggle WiFi' to enable.");
+            } else {
+                snprintf(status_buf, sizeof(status_buf), "WiFi Status: OFF\n\n"
+                        "WiFi is currently disabled.\n"
+                        "Use 'Toggle WiFi' to enable.");
+            }
+        } else {
+            // Get connection status
+            wifi_ap_record_t ap_info;
+            err = esp_wifi_sta_get_ap_info(&ap_info);
+            
+            if (err != ESP_OK) {
+                snprintf(status_buf, sizeof(status_buf), "WiFi Status: ON\n\n"
+                        "Not connected to any network.\n"
+                        "SSID: %s", WIFI_STATION_SSID);
+            } else {
+                // Get IP address
+                tcpip_adapter_ip_info_t ip_info;
+                tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ip_info);
+                
+                // Format IP address as string
+                char ip_str[16];
+                snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d", 
+                        (ip_info.ip.addr) & 0xff, 
+                        (ip_info.ip.addr >> 8) & 0xff, 
+                        (ip_info.ip.addr >> 16) & 0xff, 
+                        (ip_info.ip.addr >> 24) & 0xff);
+                
+                // Format RSSI into signal strength description
+                const char* signal_str;
+                if (ap_info.rssi >= -50) {
+                    signal_str = "Excellent";
+                } else if (ap_info.rssi >= -60) {
+                    signal_str = "Good";
+                } else if (ap_info.rssi >= -70) {
+                    signal_str = "Fair";
+                } else {
+                    signal_str = "Poor";
+                }
+                
+                snprintf(status_buf, sizeof(status_buf), "WiFi Status: CONNECTED\n\n"
+                        "Network: %s\n"
+                        "IP: %s\n"
+                        "Signal: %s (%d dBm)\n"
+                        "Channel: %d", 
+                        ap_info.ssid, ip_str, signal_str, ap_info.rssi, ap_info.primary);
+            }
+        }
+        
+        lv_label_set_text(msg, status_buf);
+        lv_obj_align(msg, NULL, LV_ALIGN_CENTER, 0, 0);
+        
+        lv_task_del(task);
+    }, 100, LV_TASK_PRIO_MID, NULL);
+    status_task->user_data = msg;
+    lv_task_once(status_task);
+    
+    // Close button
+    lv_obj_t *btn_close = lv_btn_create(dialog, NULL);
+    lv_obj_t *lbl_close = lv_label_create(btn_close, NULL);
+    lv_label_set_text(lbl_close, "CLOSE");
+    lv_obj_add_style(btn_close, LV_OBJ_PART_MAIN, &style_default_button);
+    lv_obj_align(btn_close, dialog, LV_ALIGN_IN_BOTTOM_MID, 0, -10);
+    lv_obj_set_event_cb(btn_close, [](lv_obj_t *obj, lv_event_t event) {
+        if (event == LV_EVENT_CLICKED) {
+            // Delete the dialog
+            lv_obj_t *dialog = lv_obj_get_parent(obj);
+            lv_obj_t *modal_bg = lv_obj_get_parent(dialog);
+            lv_obj_del(modal_bg);
+        }
+    });
 }
