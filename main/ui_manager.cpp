@@ -13,6 +13,8 @@
 #include <vector> 
 #include <map>    
 
+#include "joystick.h" // Added for lvgl_joystick_get_group()
+
 LV_FONT_DECLARE(lv_font_firacode_16);
 LV_IMG_DECLARE(SCP_Foundation);
 
@@ -68,6 +70,7 @@ lv_style_t style_default_screen_bg;
 lv_style_t style_default_label; // General purpose label style (e.g., for titles, static text)
 lv_style_t style_default_button;
 lv_style_t style_transparent_container; // For label containers
+lv_style_t style_focused_button; // Style for focused buttons
 
 
 // --- UserData for Buttons ---
@@ -92,7 +95,7 @@ void ui_styles_init(void) {
     // Default Label Style (for titles, static text items on menus)
     lv_style_init(&style_default_label);
     lv_style_set_text_font(&style_default_label, LV_STATE_DEFAULT, TERMINAL_FONT);
-    lv_style_set_text_color(&style_default_label, LV_STATE_DEFAULT, TERMINAL_COLOR_FOREGROUND); // Using green
+    lv_style_set_text_color(&style_default_label, LV_STATE_DEFAULT, TERMINAL_COLOR_FOREGROUND_ALT);
     lv_style_set_text_opa(&style_default_label, LV_STATE_DEFAULT, LV_OPA_COVER);
     lv_style_set_text_line_space(&style_default_label, LV_STATE_DEFAULT, TERMINAL_LABEL_LINE_SPACE);
 
@@ -122,6 +125,9 @@ void ui_styles_init(void) {
     lv_style_set_bg_opa(&style_transparent_container, LV_STATE_DEFAULT, LV_OPA_TRANSP);
     lv_style_set_border_width(&style_transparent_container, LV_STATE_DEFAULT, 0);
     lv_style_set_pad_all(&style_transparent_container, LV_STATE_DEFAULT, 0);
+
+    // Focused Button Style
+    lv_style_set_text_color(&style_default_button, LV_STATE_FOCUSED, lv_color_hex(0xFF0000)); // Red text when focused
 }
 
 // Main UI screen loading function
@@ -262,6 +268,13 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
     const int button_height = TERMINAL_BUTTON_HEIGHT;                             // Use new height
     const lv_coord_t horizontal_padding = TERMINAL_PADDING_HORIZONTAL;           // Use new padding
 
+    lv_group_t* joy_group = lvgl_joystick_get_group();
+    if (joy_group) {
+        lv_group_remove_all_objs(joy_group); // Clear group for the new screen
+    }
+
+    lv_obj_t* first_interactive_object_to_focus = NULL;
+
     for (const auto& item_def_from_vector : definition->items) {
         if (item_def_from_vector.render_type == RENDER_AS_STATIC_LABEL) {
 
@@ -323,8 +336,21 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
             
             lv_obj_set_user_data(btn, btn_ctx);
             lv_obj_set_event_cb(btn, dynamic_button_event_handler);
+
+            if (joy_group) {
+                lv_group_add_obj(joy_group, btn);
+                if (!first_interactive_object_to_focus) {
+                    first_interactive_object_to_focus = btn;
+                }
+            }
         }
     }
+
+    // Set initial focus if an interactive object was identified
+    if (joy_group && first_interactive_object_to_focus) {
+        lv_group_focus_obj(first_interactive_object_to_focus);
+    }
+
     return screen;
 }
 
@@ -346,7 +372,7 @@ static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event) {
                  ctx->item_def.action_target.c_str(), ctx->invoking_parent_for_on_screen.c_str());
 
         screen_create_func_t next_screen_creator = nullptr;
-        lv_scr_load_anim_t anim = LV_SCR_LOAD_ANIM_MOVE_LEFT; 
+        lv_scr_load_anim_t anim = SCREEN_ANIMATION_TYPE_FORWARD; // Use macro
 
         switch (ctx->item_def.action) {
             case ACTION_NAVIGATE_SUBMENU:
@@ -379,7 +405,7 @@ static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event) {
                 break; 
 
             case ACTION_GO_BACK:
-                anim = LV_SCR_LOAD_ANIM_MOVE_RIGHT;
+                anim = SCREEN_ANIMATION_TYPE_BACKWARD; // Use macro
                 if (!ctx->invoking_parent_for_on_screen.empty() && G_MenuScreens.count(ctx->invoking_parent_for_on_screen)) {
                     G_TargetMenuNameForCreation = ctx->invoking_parent_for_on_screen; 
                     
@@ -421,7 +447,7 @@ static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event) {
         }
 
         if (next_screen_creator) {
-            ui_load_active_target_screen(anim, 300, 0, true, next_screen_creator);
+            ui_load_active_target_screen(anim, SCREEN_ANIMATION_DURATION, 0, true, next_screen_creator); // Use macro for duration
         }
 
     } else if (event == LV_EVENT_DELETE) {
@@ -430,6 +456,14 @@ static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event) {
             ESP_LOGD(TAG_UI_MGR, "Deleting ButtonActionContext for: %s", ctx->item_def.text_to_display.c_str());
             delete ctx;
             lv_obj_set_user_data(obj, NULL); 
+        }
+    } else if (event == LV_EVENT_KEY) {
+        uint32_t key = *((uint32_t *)lv_event_get_data()); // Retrieve key directly from event data
+        if (key == LV_KEY_DOWN) {
+            lv_group_focus_next((lv_group_t *)lv_obj_get_group(obj)); // Cast to lv_group_t*
+        }
+        if (key == LV_KEY_UP) {
+            lv_group_focus_prev((lv_group_t *)lv_obj_get_group(obj)); // Cast to lv_group_t*
         }
     }
 }
@@ -475,7 +509,7 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
     if (is_file) {
         esp_err_t read_res = lvgl_display_text_from_sd_file(text_content_label_ts, content.c_str()); 
         if (read_res != ESP_OK) {
-            lv_label_set_text(text_content_label_ts, "Error: Could not load text from file.");
+            lv_label_set_text(text_content_label_ts, "[DATA EXPUNGED]");
         }
     } else {
         lv_label_set_text(text_content_label_ts, content.c_str()); 
@@ -483,22 +517,39 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
 
     lv_obj_t *btn_back = lv_btn_create(screen, NULL);
     lv_obj_add_style(btn_back, LV_BTN_PART_MAIN, &style_default_button);
-    lv_obj_set_size(btn_back, 100, 35); 
+    lv_obj_set_size(btn_back, 300, 35); 
     lv_obj_align(btn_back, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -10);
 
     lv_obj_t *btn_back_label = lv_label_create(btn_back, NULL);
-    lv_label_set_text(btn_back_label, "Back");
+    lv_label_set_text(btn_back_label, "Press Enter To Go Back");
     lv_obj_align(btn_back_label, NULL, LV_ALIGN_CENTER, 0, 0);
 
-    ButtonActionContext* back_btn_ctx = new ButtonActionContext();
-    back_btn_ctx->item_def.action = ACTION_GO_BACK; 
-    back_btn_ctx->item_def.text_to_display = "Back"; 
-    back_btn_ctx->on_screen_name = title; 
-    back_btn_ctx->invoking_parent_for_on_screen = actual_invoking_parent_name; 
+    ButtonActionContext* back_button_ctx = new ButtonActionContext();
+    back_button_ctx->item_def.action = ACTION_GO_BACK; 
+    back_button_ctx->item_def.text_to_display = "Back"; 
+    back_button_ctx->on_screen_name = title; 
+    back_button_ctx->invoking_parent_for_on_screen = actual_invoking_parent_name; 
     
-    lv_obj_set_user_data(btn_back, back_btn_ctx); 
+    lv_obj_set_user_data(btn_back, back_button_ctx); // btn_back gets its own context
     lv_obj_set_event_cb(btn_back, dynamic_button_event_handler);
 
+    // text_page also needs a context if it's going to be handled by dynamic_button_event_handler
+    // to trigger a back action or for any other reason that might lead to context deletion.
+    // We create a new, separate context for it.
+    ButtonActionContext* text_page_action_ctx = new ButtonActionContext();
+    text_page_action_ctx->item_def.action = ACTION_GO_BACK; // Or appropriate action for text_page
+    text_page_action_ctx->item_def.text_to_display = "Back (from text_page)"; // Differentiate for logging if needed
+    text_page_action_ctx->on_screen_name = title;
+    text_page_action_ctx->invoking_parent_for_on_screen = actual_invoking_parent_name;
+
+    lv_obj_set_user_data(text_page, text_page_action_ctx); 
+    lv_obj_set_event_cb(text_page, dynamic_button_event_handler); // This will delete text_page_action_ctx
+
+    lv_group_t* joy_group = lvgl_joystick_get_group();
+    if (joy_group) {
+        lv_group_add_obj(joy_group, text_page);
+        lv_group_focus_obj(text_page);
+    }
     return screen;
 }
 

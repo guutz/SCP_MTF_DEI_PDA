@@ -156,10 +156,10 @@ static void peripheralsTask(void *pvParameter) {
         // Read Joystick State
         esp_err_t joy_ret = joystick_read_state(&mcp23008_device, &current_joystick_state);
         if (joy_ret == ESP_OK) {
-            ESP_LOGI(TAG_MAIN, "Joystick: X=%d, Y=%d, Btn=%s", 
-                     current_joystick_state.x, 
-                     current_joystick_state.y, 
-                     current_joystick_state.button_pressed ? "Pressed" : "Released");
+            // ESP_LOGI(TAG_MAIN, "Joystick: X=%d, Y=%d, Btn=%s", 
+            //          current_joystick_state.x, 
+            //          current_joystick_state.y, 
+            //          current_joystick_state.button_pressed ? "Pressed" : "Released");
 
             if (current_joystick_state.button_pressed) {
                 mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_1, true);

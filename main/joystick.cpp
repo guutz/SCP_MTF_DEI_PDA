@@ -61,16 +61,16 @@ static bool joystick_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data) { // Ch
         act_state = LV_INDEV_STATE_PR;
     }
     // Joystick movements
-    else if (joy_state.y < JOYSTICK_THRESHOLD_LOW) { // Up
+    else if (joy_state.x < JOYSTICK_THRESHOLD_LOW) { // Up
         act_key = LV_KEY_UP;
         act_state = LV_INDEV_STATE_PR;
-    } else if (joy_state.y > JOYSTICK_THRESHOLD_HIGH) { // Down
+    } else if (joy_state.x > JOYSTICK_THRESHOLD_HIGH) { // Down
         act_key = LV_KEY_DOWN;
         act_state = LV_INDEV_STATE_PR;
-    } else if (joy_state.x < JOYSTICK_THRESHOLD_LOW) { // Left
+    } else if (joy_state.y < JOYSTICK_THRESHOLD_LOW) { // Left
         act_key = LV_KEY_LEFT;
         act_state = LV_INDEV_STATE_PR;
-    } else if (joy_state.x > JOYSTICK_THRESHOLD_HIGH) { // Right
+    } else if (joy_state.y > JOYSTICK_THRESHOLD_HIGH) { // Right
         act_key = LV_KEY_RIGHT;
         act_state = LV_INDEV_STATE_PR;
     }

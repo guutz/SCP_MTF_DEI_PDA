@@ -4,6 +4,7 @@ idf_component_register(
     "assets/lv_font_firacode_4.c"
     "assets/lv_font_firacode_8.c"
     "assets/lv_font_firacode_12.c"
+    "assets/lv_font_firacode_14.c"
     "assets/lv_font_firacode_16.c"
     "ui_manager.cpp"
     "sd_manager.cpp"
