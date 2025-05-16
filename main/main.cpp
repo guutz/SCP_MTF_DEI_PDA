@@ -8,7 +8,7 @@
 #include "ota_manager.h"
 #include "sd_manager.h"
 #include "setup.h"
-#include "stuff.h"
+
 #include "ui_manager.h"
 
 // C Standard Library

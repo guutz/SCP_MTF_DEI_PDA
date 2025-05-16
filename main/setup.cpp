@@ -1,5 +1,4 @@
 #include "setup.h"
-#include "stuff.h" // For TERMINAL_FONT, TERMINAL_COLOR_FOREGROUND_ALT
 #include "lvgl_helpers.h"
 #include "lvgl.h"
 #include <assert.h>
@@ -8,6 +7,13 @@
 #include <time.h>
 #include "sntp.h"
 #include "esp_sntp.h"
+
+// --- Global Style Objects ---
+lv_style_t style_default_screen_bg;
+lv_style_t style_default_label; // General purpose label style (e.g., for titles, static text)
+lv_style_t style_default_button;
+lv_style_t style_transparent_container; // For label containers
+lv_style_t style_focused_button; // Style for focused buttons
 
 static void lv_tick_task(void *arg);
 static lv_obj_t *time_display_label = NULL;
@@ -88,4 +94,49 @@ void lvgl_full_init(void) {
     display_touch_init();
     time_overlay_init();
     lvgl_tick_timer_setup();
+}
+
+
+void ui_styles_init(void) {
+    // Default Screen Background Style
+    lv_style_init(&style_default_screen_bg);
+    lv_style_set_bg_color(&style_default_screen_bg, LV_STATE_DEFAULT, TERMINAL_COLOR_BACKGROUND);
+    lv_style_set_bg_opa(&style_default_screen_bg, LV_STATE_DEFAULT, LV_OPA_COVER);
+
+    // Default Label Style (for titles, static text items on menus)
+    lv_style_init(&style_default_label);
+    lv_style_set_text_font(&style_default_label, LV_STATE_DEFAULT, TERMINAL_FONT);
+    lv_style_set_text_color(&style_default_label, LV_STATE_DEFAULT, TERMINAL_COLOR_FOREGROUND_ALT);
+    lv_style_set_text_opa(&style_default_label, LV_STATE_DEFAULT, LV_OPA_COVER);
+    lv_style_set_text_line_space(&style_default_label, LV_STATE_DEFAULT, TERMINAL_LABEL_LINE_SPACE);
+
+    // Default Button Style (Normal and Pressed States)
+    lv_style_init(&style_default_button);
+    lv_style_set_radius(&style_default_button, LV_STATE_DEFAULT, TERMINAL_BUTTON_RADIUS);
+
+    // Normal state
+    lv_style_set_bg_opa(&style_default_button, LV_STATE_DEFAULT, TERMINAL_BUTTON_BG_OPA);
+    lv_style_set_bg_color(&style_default_button, LV_STATE_DEFAULT, TERMINAL_COLOR_BACKGROUND); // Transparent, relies on border
+    lv_style_set_border_width(&style_default_button, LV_STATE_DEFAULT, TERMINAL_BUTTON_BORDER_WIDTH);
+    lv_style_set_border_color(&style_default_button, LV_STATE_DEFAULT, TERMINAL_COLOR_BUTTON_BORDER);
+    lv_style_set_text_color(&style_default_button, LV_STATE_DEFAULT, TERMINAL_COLOR_BUTTON_TEXT);
+    lv_style_set_text_opa(&style_default_button, LV_STATE_DEFAULT, LV_OPA_COVER);
+    lv_style_set_text_font(&style_default_button, LV_STATE_DEFAULT, TERMINAL_FONT);
+    lv_style_set_pad_all(&style_default_button, LV_STATE_DEFAULT, TERMINAL_BUTTON_INNER_PADDING);
+
+
+    // Pressed state
+    lv_style_set_bg_opa(&style_default_button, LV_STATE_PRESSED, LV_OPA_COVER); // Make background visible on press
+    lv_style_set_bg_color(&style_default_button, LV_STATE_PRESSED, TERMINAL_COLOR_BUTTON_PRESSED_BG);
+    lv_style_set_text_color(&style_default_button, LV_STATE_PRESSED, TERMINAL_COLOR_BUTTON_PRESSED_TEXT);
+    lv_style_set_border_color(&style_default_button, LV_STATE_PRESSED, TERMINAL_COLOR_BUTTON_PRESSED_BORDER); // Change border on press
+
+    // Style for transparent containers (used to wrap static labels) - remains the same
+    lv_style_init(&style_transparent_container);
+    lv_style_set_bg_opa(&style_transparent_container, LV_STATE_DEFAULT, LV_OPA_TRANSP);
+    lv_style_set_border_width(&style_transparent_container, LV_STATE_DEFAULT, 0);
+    lv_style_set_pad_all(&style_transparent_container, LV_STATE_DEFAULT, 0);
+
+    // Focused Button Style
+    lv_style_set_text_color(&style_default_button, LV_STATE_FOCUSED, lv_color_hex(0xFF0000)); // Red text when focused
 }
