@@ -5,7 +5,6 @@
 #include <stdlib.h> 
 #include <stdio.h>
 #include <time.h>
-#include "sntp.h"
 #include "esp_sntp.h"
 
 // --- Global Style Objects ---

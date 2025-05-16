@@ -5,6 +5,7 @@
 
 static void close_modal_from_child(lv_obj_t *obj);
 static void ok_button_cb(lv_obj_t *obj, lv_event_t event);
+static void blink_mcp_led(MCP23008_NamedPin pin, uint32_t duration_ms);
 
 extern mcp23008_t mcp23008_device;
 
