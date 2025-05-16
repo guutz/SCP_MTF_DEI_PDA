@@ -6,6 +6,7 @@
 static void close_modal_from_child(lv_obj_t *obj);
 static void ok_button_cb(lv_obj_t *obj, lv_event_t event);
 
+extern mcp23008_t mcp23008_device;
 
 void register_menu_functions(void) {
     // Register the menu functions with the predefined function list
@@ -323,12 +324,57 @@ void open_telescope_control_modal(void) {
     static TelescopeController* telescope = nullptr;
     static lv_task_t* joystick_task = nullptr;
     static bool modal_open = false;
+    static char last_sent[64] = "";
+    static char last_recv[128] = "";
 
     if (modal_open) return; // Prevent multiple modals
     modal_open = true;
 
-    // Allocate and initialize the controller
-    telescope = new TelescopeController();
+    // Allocate and initialize the controller (TeleProxy only, no double init)
+    // Add labels for last sent/received commands
+    lv_obj_t* sent_label = nullptr;
+    lv_obj_t* recv_label = nullptr;
+
+    // Helper: wrap send_command and read_response to update labels
+    struct TeleProxy : public TelescopeController {
+        lv_obj_t* sent;
+        lv_obj_t* recv;
+        TeleProxy(lv_obj_t* s, lv_obj_t* r) : sent(s), recv(r) {}
+        esp_err_t send_command(const char* cmd, bool add_cr = true, int send_delay_ms = 8, int recv_delay_ms = 8) {
+            snprintf(last_sent, sizeof(last_sent), "%s", cmd);
+            lv_label_set_text_fmt(sent, "Last sent: %s", last_sent);
+            blink_mcp_led(MCP_PIN_ETH_LED_1, 100);
+            return TelescopeController::send_command(cmd, add_cr, send_delay_ms, recv_delay_ms);
+        }
+        esp_err_t read_response(char* buffer, size_t buffer_len, int timeout_ms = 500) {
+            esp_err_t ret = TelescopeController::read_response(buffer, buffer_len, timeout_ms);
+            snprintf(last_recv, sizeof(last_recv), "%s", buffer);
+            lv_label_set_text_fmt(recv, "Last recv: %s", last_recv);
+            blink_mcp_led(MCP_PIN_ETH_LED_2, 100);
+            return ret;
+        }
+    };
+
+    // Create modal dialog
+    ModalDialogParts dialog = create_modal_dialog(
+        "Telescope Control",
+        "Use the joystick to move the telescope.\nPress CLOSE to exit.",
+        "CLOSE", nullptr,
+        nullptr, nullptr, nullptr, nullptr, 2
+    );
+    lv_group_t* joy_group = lvgl_joystick_get_group();
+    lv_group_add_obj(joy_group, dialog.btn1);
+
+    // Add labels for last sent/received commands
+    sent_label = lv_label_create(dialog.dialog, NULL);
+    lv_label_set_text(sent_label, "Last sent: ");
+    lv_obj_align(sent_label, dialog.msg, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
+    recv_label = lv_label_create(dialog.dialog, NULL);
+    lv_label_set_text(recv_label, "Last recv: ");
+    lv_obj_align(recv_label, sent_label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5);
+
+    // Allocate and initialize the TeleProxy controller only ONCE
+    telescope = new TeleProxy(sent_label, recv_label);
     if (telescope->init() != ESP_OK) {
         delete telescope;
         telescope = nullptr;
@@ -351,12 +397,10 @@ void open_telescope_control_modal(void) {
     // Modal close callback
     auto close_cb = [](lv_obj_t *obj, lv_event_t event) {
         if (event == LV_EVENT_CLICKED) {
-            // Stop joystick polling task
             if (joystick_task) {
                 lv_task_del(joystick_task);
                 joystick_task = nullptr;
             }
-            // Delete controller
             if (telescope) {
                 delete telescope;
                 telescope = nullptr;
@@ -365,24 +409,25 @@ void open_telescope_control_modal(void) {
             modal_open = false;
         }
     };
-
-    // Create modal dialog
-    ModalDialogParts dialog = create_modal_dialog(
-        "Telescope Control",
-        "Use the joystick to move the telescope.\nPress CLOSE to exit.",
-        "CLOSE", close_cb,
-        nullptr, nullptr, nullptr, nullptr, 2
-    );
-    lv_group_t* joy_group = lvgl_joystick_get_group();
-    lv_group_add_obj(joy_group, dialog.btn1);
+    lv_obj_set_event_cb(dialog.btn1, close_cb);
 
     // Joystick polling task
     joystick_task = lv_task_create([](lv_task_t *task) {
         if (!telescope) return;
         JoystickState_t js;
-        extern mcp23008_t mcp23008_device;
         if (joystick_read_state(&mcp23008_device, &js) == ESP_OK) {
             telescope->process_joystick_input(&js);
         }
     }, 100, LV_TASK_PRIO_LOW, NULL); // 100ms polling
+}
+
+// Helper: blink any MCP23008 LED for a given duration (non-blocking)
+static void blink_mcp_led(MCP23008_NamedPin pin, uint32_t duration_ms) {
+    mcp23008_wrapper_write_pin(&mcp23008_device, pin, true);
+    lv_task_t* led_task = lv_task_create([](lv_task_t* task) {
+        MCP23008_NamedPin pin = (MCP23008_NamedPin)(uintptr_t)task->user_data;
+        mcp23008_wrapper_write_pin(&mcp23008_device, pin, false);
+        lv_task_del(task);
+    }, duration_ms, LV_TASK_PRIO_LOW, (void*)(uintptr_t)pin);
+    lv_task_once(led_task);
 }

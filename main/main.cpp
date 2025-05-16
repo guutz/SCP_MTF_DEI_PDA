@@ -125,7 +125,7 @@ static void initTask(void *pvParameter) {
 
     ESP_LOGI(TAG_MAIN, "[InitTask] Starting Wi-Fi, peripherals, and GUI tasks.");
     xTaskCreatePinnedToCore(wifi_init_task, "wifi_init", 4096, NULL, 5, NULL, 0);
-    xTaskCreatePinnedToCore(peripheralsTask, "peripherals", 1024 * 2, NULL, 5, NULL, 1);
+    // xTaskCreatePinnedToCore(peripheralsTask, "peripherals", 1024 * 2, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 8, NULL, 5, NULL, 1);
 
     ESP_LOGI(TAG_MAIN, "[InitTask] Initialization complete. Deleting self.");
@@ -161,14 +161,14 @@ static void peripheralsTask(void *pvParameter) {
             //          current_joystick_state.y, 
             //          current_joystick_state.button_pressed ? "Pressed" : "Released");
 
-            if (current_joystick_state.button_pressed) {
-                mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_1, true);
-                mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_2, false);
-            }
-            else {
-                mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_1, false);
-                mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_2, true);
-            }
+            // if (current_joystick_state.button_pressed) {
+            //     mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_1, true);
+            //     mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_2, false);
+            // }
+            // else {
+            //     mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_1, false);
+            //     mcp23008_wrapper_write_pin(&mcp23008_device, MCP_PIN_ETH_LED_2, true);
+            // }
         } else {
             ESP_LOGE(TAG_MAIN, "Failed to read joystick state: %s", esp_err_to_name(joy_ret));
         }
