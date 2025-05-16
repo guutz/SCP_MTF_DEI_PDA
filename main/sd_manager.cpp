@@ -1,5 +1,6 @@
 #include "sd_manager.h"
 #include "menu_structures.h" // For MenuScreenDefinition, G_MenuScreens etc.
+#include "sd_raw_access.h" // Include the raw SD card access functions
 
 #include <cstdio>
 #include <cerrno>
@@ -24,7 +25,8 @@ static const char *TAG_SD = "sd_manager";
 #define PIN_NUM_CLK   GPIO_NUM_18 
 #define PIN_NUM_CS    GPIO_NUM_5  
 
-static SemaphoreHandle_t s_sd_mutex = NULL;
+// Externalize for use by sd_raw_access functions
+SemaphoreHandle_t s_sd_mutex = NULL;
 static sdmmc_card_t* s_card = NULL;
 static bool s_lvgl_fs_registered = false;
 
@@ -99,7 +101,16 @@ void sd_init(lv_task_t* task) {
             return;
         }
     }
+    
+    // Register with LVGL
     sd_register_with_lvgl();
+    
+    // Initialize raw SD access
+    esp_err_t raw_init_result = sd_raw_init_access(s_sd_mutex, MOUNT_POINT);
+    if (raw_init_result != ESP_OK) {
+        ESP_LOGE(TAG_SD, "Failed to initialize raw SD access: %s", esp_err_to_name(raw_init_result));
+        return;
+    }
 }
 
 void sd_register_with_lvgl() {
@@ -473,14 +484,10 @@ bool parse_menu_definition_file(const char* file_path_on_sd) {
 
         } else if (in_screen_def && line.rfind("TEXT:", 0) == 0) { 
              MenuItemDefinition item;
-             item.text_to_display = trim_string(line.substr(5)); 
-             item.render_type = RENDER_AS_STATIC_LABEL;
-             item.action = ACTION_NONE; 
-             item.action_target = ""; // No target for static text
+             item.text_to_display = trim_string(line.substr(6)); 
+             item.render_type = RENDER_AS_STATIC_LABEL; // This is text content
              current_screen_def.items.push_back(item);
-             ESP_LOGV(TAG_SD, "Added STATIC_LABEL. Text: %.30s", item.text_to_display.c_str());
-        } else if (in_screen_def) {
-             ESP_LOGW(TAG_SD, "Unrecognized line in menu definition while in screen '%s': %s", current_screen_def.name.c_str(), line.c_str());
+             ESP_LOGV(TAG_SD, "Added TEXT: '%s'", item.text_to_display.c_str());
         }
     }
 

@@ -80,4 +80,10 @@ void toggle_wifi_from_menu(void);
  */
 void show_wifi_status_from_menu(void);
 
+/**
+ * @brief Navigates back to the previous screen
+ * Used by text pages and other screens to safely go back
+ */
+void ui_navigate_back(void);
+
 #endif // UI_MANAGER_H

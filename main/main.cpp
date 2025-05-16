@@ -135,8 +135,8 @@ static void initTask(void *pvParameter) {
 
 static void wifi_init_task(void *pvParameter) {
     (void)pvParameter;
-    // ESP_LOGI(TAG_MAIN, "Wi-Fi init task started, waiting for 10 seconds...");
-    // vTaskDelay(pdMS_TO_TICKS(10000)); // Wait for 10 seconds
+    ESP_LOGI(TAG_MAIN, "Wi-Fi init task started, waiting for 3 seconds...");
+    vTaskDelay(pdMS_TO_TICKS(3000)); // Wait for 3 seconds
 
     ESP_LOGI(TAG_MAIN, "Initializing Wi-Fi...");
     // XNM::NetHelpers::init_global_r3_ca(); 
