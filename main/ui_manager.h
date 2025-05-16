@@ -11,12 +11,6 @@ extern volatile bool g_wifi_intentional_stop;
 // set prior to their invocation.
 typedef lv_obj_t* (*screen_create_func_t)(void);
 
-// --- Global Style Declarations ---
-// These styles are initialized by ui_styles_init() and can be used by UI elements.
-extern lv_style_t style_default_screen_bg;
-extern lv_style_t style_default_label;
-extern lv_style_t style_default_button;
-
 // --- Public Function Declarations ---
 
 /**
@@ -28,11 +22,6 @@ extern lv_style_t style_default_button;
  */
 void ui_init(lv_task_t *task);
 
-/**
- * @brief Initializes the global default styles for UI elements.
- * Called by ui_init().
- */
-void ui_styles_init(void);
 
 /**
  * @brief Loads the screen specified by G_TargetMenuNameForCreation using the provided
@@ -57,33 +46,5 @@ void ui_load_active_target_screen(lv_scr_load_anim_t anim_type,
                                   screen_create_func_t screen_creator_func);
 
 
-void example_predefined_function_1(void);
-void example_predefined_function_2(void);
-
-/**
- * @brief Trigger OTA update from the menu
- * This function is registered with G_PredefinedFunctions to allow
- * the OTA update to be triggered from a menu button
- */
-void trigger_ota_update_from_menu(void);
-
-/**
- * @brief Toggle WiFi on or off from the menu
- * This function is registered with G_PredefinedFunctions to allow
- * WiFi to be toggled from a menu button
- */
-void toggle_wifi_from_menu(void);
-
-/**
- * @brief Display WiFi status information
- * Shows current WiFi connection status, IP address, and signal strength
- */
-void show_wifi_status_from_menu(void);
-
-/**
- * @brief Navigates back to the previous screen
- * Used by text pages and other screens to safely go back
- */
-void ui_navigate_back(void);
 
 #endif // UI_MANAGER_H

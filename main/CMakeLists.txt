@@ -16,5 +16,7 @@ idf_component_register(
     "mcp23008_wrapper.cpp"
     "cd4053b_wrapper.cpp"
     "joystick.cpp"
+    "telescope_controller.cpp"
+    "menu_functions.cpp"
     INCLUDE_DIRS "."
 )
