@@ -5,7 +5,8 @@
 #include "lvgl.h"
 #include "lvgl_helpers.h"
 #include "ui_manager.h"
-#include "sd_manager.h" 
+#include "sd_manager.h"
+#include "sd_raw_access.h" 
 #include "stuff.h"
 #include "esp_log.h"
 #include <cinttypes>
@@ -14,6 +15,7 @@
 #include <map>    
 
 #include "joystick.h" // Added for lvgl_joystick_get_group()
+#include "audio_player.h"
 
 LV_FONT_DECLARE(lv_font_firacode_16);
 LV_IMG_DECLARE(SCP_Foundation);
@@ -45,6 +47,8 @@ static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event);
 
 // Forward declaration for OTA function from ota_manager.cpp
 void trigger_ota_update(void);
+
+void play_audio_file_in_background(void);
 
 
 ///////////////////////////////////////////////
@@ -160,11 +164,15 @@ void ui_init(lv_task_t *current_init_task) {
 
     ui_styles_init();
 
+    // --- Ensure audio player is initialized ---
+    audio_player_init(DAC_CHANNEL_2);
+
     G_PredefinedFunctions["diag1"] = example_predefined_function_1;
     G_PredefinedFunctions["diag2"] = example_predefined_function_2;
     G_PredefinedFunctions["ota_update"] = trigger_ota_update_from_menu;
     G_PredefinedFunctions["wifi_toggle"] = toggle_wifi_from_menu;
     G_PredefinedFunctions["wifi_status"] = show_wifi_status_from_menu;
+    G_PredefinedFunctions["play_audio"] = play_audio_file_in_background;
 
     if (parse_menu_definition_file("S:/DEI/menu.txt")) { 
         ESP_LOGI(TAG_UI_MGR, "Successfully parsed menu definitions.");
@@ -498,7 +506,6 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
     
     lv_obj_set_style_local_bg_color(text_page, LV_PAGE_PART_SCROLLBAR, LV_STATE_DEFAULT, TERMINAL_COLOR_FOREGROUND);
     lv_obj_set_style_local_bg_opa(text_page, LV_PAGE_PART_SCROLLBAR, LV_STATE_DEFAULT, LV_OPA_COVER);
-
 
     lv_obj_t *text_content_label_ts = lv_label_create(text_page, NULL); 
     lv_obj_add_style(text_content_label_ts, LV_LABEL_PART_MAIN, &style_default_label); 
@@ -1020,7 +1027,7 @@ void show_wifi_status_from_menu(void) {
     lv_obj_t *lbl_close = lv_label_create(btn_close, NULL);
     lv_label_set_text(lbl_close, "CLOSE");
     lv_obj_add_style(btn_close, LV_OBJ_PART_MAIN, &style_default_button);
-    lv_obj_align(btn_close, dialog, LV_ALIGN_IN_BOTTOM_MID, 0, -10);
+    lv_obj_align(btn_close, dialog, LV_ALIGN_IN_BOTTOM_MID, 0, -30);
     lv_obj_set_event_cb(btn_close, [](lv_obj_t *obj, lv_event_t event) {
         if (event == LV_EVENT_CLICKED) {
             // Delete the dialog
@@ -1029,4 +1036,18 @@ void show_wifi_status_from_menu(void) {
             lv_obj_del(modal_bg);
         }
     });
+    lv_group_t* joy_group = lvgl_joystick_get_group();
+    lv_group_add_obj(joy_group, btn_close);
+}
+
+// Custom predefined function to play an audio file in the background
+void play_audio_file_in_background(void) {
+    const char* audio_file_path = "DEI/sounds/GameStart.raw"; // Replace with actual file path
+    ESP_LOGI(TAG_UI_MGR, "Playing audio file in the background: %s", audio_file_path);
+
+    // Correct call for audio playback (assuming audio_player_start is the correct function)
+    esp_err_t result = audio_player_play_file(audio_file_path, 16000);
+    if (result != ESP_OK) {
+        ESP_LOGE(TAG_UI_MGR, "Failed to play audio file: %s", esp_err_to_name(result));
+    }
 }
