@@ -39,9 +39,9 @@ LV_FONT_DECLARE(lv_font_firacode_14);
 #define TERMINAL_PADDING_HORIZONTAL 5            // Reduced from 20
 #define TERMINAL_PADDING_VERTICAL_TITLE_TOP 5    // Reduced from 10
 #define TERMINAL_PADDING_VERTICAL_AFTER_TITLE 8  // Reduced from 15
-#define TERMINAL_ITEM_SPACING 3                  // Reduced from 5
+#define TERMINAL_ITEM_SPACING 2                  // Reduced from 5
 #define TERMINAL_BUTTON_HEIGHT 16                // Reduced from 30, adjust based on font size
-#define TERMINAL_LABEL_LINE_SPACE 1              // Reduced from 2 (no extra line space)
+#define TERMINAL_LABEL_LINE_SPACE 0              // Reduced from 2 (no extra line space)
 #define TERMINAL_BUTTON_RADIUS 0                 // Square corners for buttons
 #define TERMINAL_BUTTON_BORDER_WIDTH 0           // Add a 1px border to buttons
 #define TERMINAL_BUTTON_INNER_PADDING 0          // Small padding inside the button border
