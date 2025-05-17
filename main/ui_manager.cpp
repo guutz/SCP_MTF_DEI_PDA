@@ -205,22 +205,20 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
     
     lv_obj_t *screen = lv_obj_create(NULL, NULL);
     lv_obj_add_style(screen, LV_OBJ_PART_MAIN, &style_default_screen_bg); 
-    lv_obj_set_size(screen, lv_disp_get_hor_res(NULL), lv_disp_get_ver_res(NULL)); 
-    ESP_LOGD(TAG_UI_MGR, "Screen actual size after set_size: %d x %d", lv_obj_get_width(screen), lv_obj_get_height(screen));
+    lv_obj_set_size(screen, lv_disp_get_hor_res(NULL), lv_disp_get_ver_res(NULL));
 
 
     lv_obj_t *title_label = lv_label_create(screen, NULL);
     lv_label_set_long_mode(title_label, LV_LABEL_LONG_BREAK);
     lv_obj_add_style(title_label, LV_LABEL_PART_MAIN, &style_default_label);
     lv_label_set_text(title_label, definition->title.c_str());
-    lv_obj_set_width(title_label, lv_obj_get_width(screen) - (2 * TERMINAL_PADDING_HORIZONTAL)); // Use new padding
+    lv_obj_set_width(title_label, lv_obj_get_width(screen) - (2 * TERMINAL_PADDING_HORIZONTAL)); 
     lv_label_set_align(title_label, LV_LABEL_ALIGN_CENTER);
-    lv_obj_align(title_label, NULL, LV_ALIGN_IN_TOP_MID, 0, TERMINAL_PADDING_VERTICAL_TITLE_TOP); // Use new padding
+    lv_obj_align(title_label, NULL, LV_ALIGN_IN_TOP_MID, 0, TERMINAL_PADDING_VERTICAL_TITLE_TOP); 
 
-    int item_y_offset = lv_obj_get_y(title_label) + lv_obj_get_height_fit(title_label) + TERMINAL_PADDING_VERTICAL_AFTER_TITLE; // Use new padding
-    const int item_spacing = TERMINAL_ITEM_SPACING;                               // Use new spacing
-    const int button_height = TERMINAL_BUTTON_HEIGHT;                             // Use new height
-    const lv_coord_t horizontal_padding = TERMINAL_PADDING_HORIZONTAL;           // Use new padding
+    int item_y_offset = lv_obj_get_y(title_label) + lv_obj_get_height_fit(title_label) + TERMINAL_PADDING_VERTICAL_AFTER_TITLE;
+    const int item_spacing = TERMINAL_ITEM_SPACING;
+    const lv_coord_t horizontal_padding = TERMINAL_PADDING_HORIZONTAL; 
 
     lv_group_t* joy_group = lvgl_joystick_get_group();
     if (joy_group) {
@@ -238,7 +236,7 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
             // This correctly calculates the container's width as 280px
             lv_coord_t calculated_container_width = lv_obj_get_width(screen) - (2 * horizontal_padding);
             lv_obj_set_width(label_container, calculated_container_width);
-            lv_cont_set_fit2(label_container, LV_FIT_NONE, LV_FIT_TIGHT); // Width fixed, height tight
+            lv_cont_set_fit2(label_container, LV_FIT_NONE, LV_FIT_TIGHT);
             lv_obj_align(label_container, NULL, LV_ALIGN_IN_TOP_LEFT, horizontal_padding, item_y_offset);
 
             // Create the label as a child of the container
@@ -259,14 +257,13 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
 
             lv_label_set_align(static_label_obj, LV_LABEL_ALIGN_LEFT);
 
-            // Your logging:
             lv_coord_t actual_container_height = lv_obj_get_height(label_container);
             ESP_LOGD(TAG_UI_MGR, "Static label container ('%.20s...') cont_w:%d, cont_h:%d, y:%d. Label_w:%d, Label_h:%d",
                     item_def_from_vector.text_to_display.c_str(),
-                    lv_obj_get_width(label_container), // Should be 280
+                    lv_obj_get_width(label_container),
                     actual_container_height,
                     item_y_offset,
-                    lv_obj_get_width(static_label_obj), // Hopefully 280 now
+                    lv_obj_get_width(static_label_obj),
                     lv_obj_get_height(static_label_obj));
 
             item_y_offset += actual_container_height + item_spacing;
@@ -279,9 +276,12 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
 
             lv_obj_t *btn_label_obj = lv_label_create(btn, NULL);
             lv_label_set_long_mode(btn_label_obj, LV_LABEL_LONG_BREAK);
-            lv_obj_set_width(btn_label_obj, lv_obj_get_width(btn) - (2 * horizontal_padding)); // Use new padding
+            lv_obj_set_width(btn_label_obj, lv_obj_get_width(btn)); 
             lv_label_set_text(btn_label_obj, item_def_from_vector.text_to_display.c_str());
             lv_obj_align(btn_label_obj, NULL, LV_ALIGN_CENTER, 0, 0);
+            lv_label_set_align(btn_label_obj, LV_LABEL_ALIGN_CENTER);
+
+            lv_obj_set_height(btn, lv_obj_get_height(btn_label_obj) + 2); // Add padding to button height
 
             item_y_offset += lv_obj_get_height(btn) + item_spacing;
 
@@ -302,7 +302,6 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
         }
     }
 
-    // Set initial focus if an interactive object was identified
     if (joy_group && first_interactive_object_to_focus) {
         lv_group_focus_obj(first_interactive_object_to_focus);
     }
@@ -444,9 +443,20 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
     lv_label_set_align(title_label_ts, LV_LABEL_ALIGN_CENTER);
     lv_obj_align(title_label_ts, NULL, LV_ALIGN_IN_TOP_MID, 0, 10);
 
+    lv_obj_t *btn_back = lv_btn_create(screen, NULL);
+    lv_obj_add_style(btn_back, LV_BTN_PART_MAIN, &style_default_button);
+    lv_obj_set_size(btn_back, 300, 16); 
+    lv_obj_align(btn_back, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_local_bg_color(btn_back, LV_BTN_PART_MAIN, LV_STATE_DEFAULT, TERMINAL_COLOR_BACKGROUND);
+    lv_obj_set_style_local_bg_opa(btn_back, LV_BTN_PART_MAIN, LV_STATE_DEFAULT, LV_OPA_COVER);
+
+    lv_obj_t *btn_back_label = lv_label_create(btn_back, NULL);
+    lv_label_set_text(btn_back_label, "Press Enter To Go Back");
+    lv_obj_align(btn_back_label, NULL, LV_ALIGN_CENTER, 0, 0);
+
     // Use a page for scrollable text content in LVGL 7
     lv_obj_t *text_page = lv_page_create(screen, NULL);
-    lv_obj_set_size(text_page, lv_obj_get_width(screen) - 20, lv_obj_get_height(screen) - lv_obj_get_y(title_label_ts) - lv_obj_get_height(title_label_ts) - 60); 
+    lv_obj_set_size(text_page, lv_obj_get_width(screen) - 20, lv_obj_get_height(screen) - lv_obj_get_y(title_label_ts) - lv_obj_get_height(title_label_ts) - lv_obj_get_height(btn_back) - 16); 
     lv_obj_align(text_page, title_label_ts, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
     lv_obj_add_style(text_page, LV_PAGE_PART_BG, &style_default_screen_bg); 
     lv_obj_add_style(text_page, LV_PAGE_PART_SCROLLABLE, &style_default_screen_bg); 
@@ -469,15 +479,6 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
     } else {
         lv_label_set_text(text_content_label_ts, content.c_str()); 
     }
-
-    lv_obj_t *btn_back = lv_btn_create(screen, NULL);
-    lv_obj_add_style(btn_back, LV_BTN_PART_MAIN, &style_default_button);
-    lv_obj_set_size(btn_back, 300, 35); 
-    lv_obj_align(btn_back, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -10);
-
-    lv_obj_t *btn_back_label = lv_label_create(btn_back, NULL);
-    lv_label_set_text(btn_back_label, "Press Enter To Go Back");
-    lv_obj_align(btn_back_label, NULL, LV_ALIGN_CENTER, 0, 0);
 
     // Create back button and context as before
     ButtonActionContext* back_button_ctx = new ButtonActionContext();
@@ -512,7 +513,7 @@ void ui_reinit_current_menu(void) {
     ESP_LOGI(TAG_UI_MGR, "Reinitializing current menu: '%s'", G_TargetMenuNameForCreation.c_str());
     auto it = G_MenuScreens.find(G_TargetMenuNameForCreation);
     if (it != G_MenuScreens.end()) {
-        ui_load_active_target_screen(LV_SCR_LOAD_ANIM_MOVE_LEFT, 500, 0, true, create_dynamic_menu_screen_wrapper);
+        ui_load_active_target_screen(LV_SCR_LOAD_ANIM_NONE, 500, 0, true, create_dynamic_menu_screen_wrapper);
     } else {
         ESP_LOGE(TAG_UI_MGR, "Cannot reinitialize. Current target menu '%s' not found.", G_TargetMenuNameForCreation.c_str());
     }

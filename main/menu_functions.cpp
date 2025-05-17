@@ -15,7 +15,7 @@ static bool modal_open = false;
 
 void register_menu_functions(void) {
     // Register the menu functions with the predefined function list
-    G_PredefinedFunctions["OTA_UPDATE"] = trigger_ota_update_from_menu;
+    // G_PredefinedFunctions["OTA_UPDATE"] = trigger_ota_update_from_menu;
     G_PredefinedFunctions["TOGGLE_WIFI"] = toggle_wifi_from_menu;
     G_PredefinedFunctions["SHOW_WIFI_STATUS"] = show_wifi_status_from_menu;
     G_PredefinedFunctions["PLAY_SOUND"] = play_audio_file_in_background;
