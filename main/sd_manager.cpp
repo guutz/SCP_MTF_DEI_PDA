@@ -14,6 +14,8 @@
 #include "sdmmc_cmd.h"
 #include "driver/spi_master.h"
 #include "esp_log.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
 static const char *TAG_SD = "sd_manager";
 
@@ -37,6 +39,56 @@ static lv_fs_res_t sd_read_cb(lv_fs_drv_t* drv, void* file_p_arg, void* buf, uin
 static lv_fs_res_t sd_write_cb(lv_fs_drv_t* drv, void* file_p_arg, const void* buf, uint32_t btw, uint32_t* bw);
 static lv_fs_res_t sd_seek_cb(lv_fs_drv_t* drv, void* file_p_arg, uint32_t pos);
 static lv_fs_res_t sd_tell_cb(lv_fs_drv_t* drv, void* file_p_arg, uint32_t* pos_p);
+
+static void provision_github_token_from_sd(void) {
+    const char* token_filename = "DEI/github_token.txt";
+    if (s_sd_mutex == NULL) return;
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
+        ESP_LOGE(TAG_SD, "Mutex timeout for GitHub token provisioning");
+        return;
+    }
+    FILE* token_fp = sd_raw_fopen(token_filename, "r");
+    if (token_fp) {
+        char token[128] = {0};
+        size_t len = fread(token, 1, sizeof(token) - 1, token_fp);
+        fclose(token_fp);
+        // Remove trailing newline if present
+        if (len > 0) {
+            int i = (int)len - 1;
+            while (i >= 0 && (token[i] == '\n' || token[i] == '\r')) {
+                token[i] = '\0';
+                --i;
+            }
+        }
+        if (strlen(token) >= 10) {
+            nvs_handle_t nvs_handle;
+            esp_err_t err = nvs_flash_init();
+            if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+                nvs_flash_erase();
+                nvs_flash_init();
+            }
+            err = nvs_open("ota", NVS_READWRITE, &nvs_handle);
+            if (err == ESP_OK) {
+                nvs_set_str(nvs_handle, "gh_token", token);
+                nvs_commit(nvs_handle);
+                nvs_close(nvs_handle);
+                ESP_LOGI(TAG_SD, "GitHub token loaded from SD and stored in NVS.");
+                // Delete the file after storing
+                char full_path[256];
+                snprintf(full_path, sizeof(full_path), "%s/%s", MOUNT_POINT, token_filename);
+                remove(full_path);
+                ESP_LOGI(TAG_SD, "github_token.txt deleted from SD after provisioning.");
+            } else {
+                ESP_LOGE(TAG_SD, "Failed to open NVS for writing GitHub token.");
+            }
+        } else {
+            ESP_LOGW(TAG_SD, "GitHub token file found but token is too short or invalid.");
+        }
+    } else {
+        ESP_LOGI(TAG_SD, "No github_token.txt found on SD, skipping token provisioning.");
+    }
+    xSemaphoreGive(s_sd_mutex);
+}
 
 void sd_init(lv_task_t* task) {
     (void)task; 
@@ -111,6 +163,7 @@ void sd_init(lv_task_t* task) {
         ESP_LOGE(TAG_SD, "Failed to initialize raw SD access: %s", esp_err_to_name(raw_init_result));
         return;
     }
+    provision_github_token_from_sd();
 }
 
 void sd_register_with_lvgl() {

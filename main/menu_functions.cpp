@@ -9,12 +9,29 @@ static void blink_mcp_led(MCP23008_NamedPin pin, uint32_t duration_ms);
 
 extern mcp23008_t mcp23008_device;
 
+// Global pointer to OTA status label for UI updates from OTA events
+lv_obj_t* ota_status_label = nullptr;
+static void ota_yes_cb(lv_obj_t *obj, lv_event_t event);
+static void no_cb(lv_obj_t *obj, lv_event_t event);
+
 void register_menu_functions(void) {
     // Register the menu functions with the predefined function list
     G_PredefinedFunctions["OTA_UPDATE"] = trigger_ota_update_from_menu;
     G_PredefinedFunctions["TOGGLE_WIFI"] = toggle_wifi_from_menu;
     G_PredefinedFunctions["SHOW_WIFI_STATUS"] = show_wifi_status_from_menu;
+    G_PredefinedFunctions["PLAY_SOUND"] = play_audio_file_in_background;
     G_PredefinedFunctions["TELESCOPE_CONTROL"] = open_telescope_control_modal;
+}
+
+// Thread-safe function to update OTA status label from OTA event callback
+void update_ota_status_label(const char* text) {
+    if (ota_status_label && text) {
+        // Use LVGL's thread-safe API if called from non-GUI thread
+        if (lv_obj_get_disp(ota_status_label) && lv_disp_get_default()) {
+            lv_label_set_text(ota_status_label, text);
+            lv_obj_align(ota_status_label, NULL, LV_ALIGN_CENTER, 0, 0);
+        }
+    }
 }
 
 void trigger_ota_update_from_menu(void) {
@@ -36,11 +53,12 @@ void trigger_ota_update_from_menu(void) {
                     Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
                     lv_obj_t *msg = (lv_obj_t*)task->user_data;
                     if (msg) {
-                        lv_label_set_text(msg, "WiFi enabled.\nChecking for updates...");
+                        lv_label_set_text(msg, "WiFi enabled. Checking for updates...");
                         lv_task_t *ota_task = lv_task_create([](lv_task_t *ota_task) {
                             trigger_ota_update();
                             lv_obj_t *msg = (lv_obj_t*)ota_task->user_data;
                             if (msg) {
+                                lv_label_set_text(msg, "OTA update started.\nSee log for progress.");
                                 lv_obj_del(msg);
                             }
                             lv_task_del(ota_task);
@@ -67,30 +85,44 @@ void trigger_ota_update_from_menu(void) {
         return;
     }
 
-    auto yes_cb = [](lv_obj_t *obj, lv_event_t event) {
-        if (event == LV_EVENT_CLICKED) {
-            close_modal_from_child(obj);
-            lv_obj_t *update_msg = lv_label_create(lv_scr_act(), NULL);
-            lv_label_set_text(update_msg, "Checking for updates...\nPlease wait.");
-            lv_obj_add_style(update_msg, LV_OBJ_PART_MAIN, &style_default_label);
-            lv_obj_align(update_msg, NULL, LV_ALIGN_CENTER, 0, 0);
-            lv_task_t *ota_task = lv_task_create([](lv_task_t *task) {
-                trigger_ota_update();
-                lv_task_del(task);
-            }, 500, LV_TASK_PRIO_MID, NULL);
-            lv_task_once(ota_task);
-        }
-    };
-    auto no_cb = [](lv_obj_t *obj, lv_event_t event) {
-        if (event == LV_EVENT_CLICKED) {
-            close_modal_from_child(obj);
-        }
-    };
+    // Create the OTA status label and assign to global pointer
+    ota_status_label = lv_label_create(lv_scr_act(), NULL);
+    lv_label_set_text(ota_status_label, "Checking for updates...\nPlease wait.");
+    lv_obj_add_style(ota_status_label, LV_OBJ_PART_MAIN, &style_default_label);
+    lv_obj_align(ota_status_label, NULL, LV_ALIGN_CENTER, 0, 0);
+
     create_modal_dialog(
         "OTA UPDATE",
         "Start firmware update?\nDevice will reboot if update is available.",
-        "YES", yes_cb, "NO", no_cb
+        "YES", ota_yes_cb, "NO", no_cb
     );
+}
+
+// Static callback for YES button in OTA dialog
+static void ota_yes_cb(lv_obj_t *obj, lv_event_t event) {
+    if (event == LV_EVENT_CLICKED) {
+        close_modal_from_child(obj);
+        if (ota_status_label) {
+            lv_label_set_text(ota_status_label, "Checking for updates...\nPlease wait.");
+            lv_obj_align(ota_status_label, NULL, LV_ALIGN_CENTER, 0, 0);
+        }
+        lv_task_t *ota_task = lv_task_create([](lv_task_t *task) {
+            trigger_ota_update();
+            lv_task_del(task);
+        }, 100, LV_TASK_PRIO_MID, NULL);
+        lv_task_once(ota_task);
+    }
+}
+
+// Static callback for NO button in OTA dialog
+static void no_cb(lv_obj_t *obj, lv_event_t event) {
+    if (event == LV_EVENT_CLICKED) {
+        close_modal_from_child(obj);
+        if (ota_status_label) {
+            lv_obj_del(ota_status_label);
+            ota_status_label = nullptr;
+        }
+    }
 }
 
 void toggle_wifi_from_menu(void) {

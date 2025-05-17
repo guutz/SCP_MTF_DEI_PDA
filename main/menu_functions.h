@@ -55,8 +55,27 @@ void toggle_wifi_from_menu(void);
 void show_wifi_status_from_menu(void);
 
 /**
+ * @brief Play audio file in the background
+ * This function is registered with G_PredefinedFunctions to allow
+ * audio playback from a menu button
+ */
+void play_audio_file_in_background(void);
+
+/**
  * @brief Open telescope control modal from the menu
  * This function is registered with G_PredefinedFunctions to allow
  * telescope control from a menu button
  */
 void open_telescope_control_modal(void);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Expose the OTA status label pointer and update function
+extern lv_obj_t* ota_status_label;
+void update_ota_status_label(const char* text);
+
+#ifdef __cplusplus
+}
+#endif

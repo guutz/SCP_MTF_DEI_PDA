@@ -7,37 +7,78 @@
 #include "esp_app_format.h"   // For esp_app_desc_t
 #include "esp_ghota.h"
 #include "esp_event.h"        // Required for esp_event_handler_register
+#include "nvs_flash.h"
+#include "nvs.h"
 #include <string.h>           // Required for memset and strncpy
+#include "menu_functions.h"
 
 static const char *TAG_OTA = "ota_manager";
 
 // --- ESP-GHOTA Configuration ---
-#define GITHUB_USER "YOUR_USERNAME" // This will be used as orgname
-#define GITHUB_REPO "YOUR_REPOSITORY" // This will be used as reponame
+#define GITHUB_USER "guutz" // This will be used as orgname
+#define GITHUB_REPO "SCP_MTF_DEI_PDA" // This will be used as reponame
 #define GITHUB_FILENAME "SCP_MTF_DEI_PDA.bin" // The exact name of the asset in your GitHub release
 // Optional: Define a specific tag if you don't want the latest release
 // #define GITHUB_TAG "v1.0.0" // Note: ghota_config_t doesn't directly take a tag for manual checks,
                              // it usually gets the "latest" or relies on Kconfig.
                              // For specific versions, the library might need different handling or Kconfig.
 
+// Retrieve GitHub token from NVS (returns true if found)
+bool ota_manager_get_github_token(char *out_token, size_t max_len) {
+    static bool nvs_initialized = false;
+    if (!nvs_initialized) {
+        esp_err_t nvs_ret = nvs_flash_init();
+        if (nvs_ret == ESP_ERR_NVS_NO_FREE_PAGES || nvs_ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+            nvs_flash_erase();
+            nvs_flash_init();
+        }
+        nvs_initialized = true;
+    }
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("ota", NVS_READONLY, &nvs_handle);
+    if (err == ESP_OK) {
+        size_t required_size = max_len;
+        err = nvs_get_str(nvs_handle, "gh_token", out_token, &required_size);
+        nvs_close(nvs_handle);
+        return (err == ESP_OK && strlen(out_token) > 0);
+    }
+    return false;
+}
+
 // OTA Event Handler
 static void ghota_event_callback(void* handler_args, esp_event_base_t base, int32_t id, void* event_data) {
     ESP_LOGI(TAG_OTA, "OTA Event: %s", ghota_get_event_str((ghota_event_e)id));
-    
     ghota_client_handle_t *client = (ghota_client_handle_t *)handler_args;
 
-    if (id == GHOTA_EVENT_FINISH_UPDATE) {
-        ESP_LOGI(TAG_OTA, "OTA Update Finished successfully. Rebooting device.");
-        esp_restart();
-    } else if (id == GHOTA_EVENT_UPDATE_FAILED) {
-        ESP_LOGE(TAG_OTA, "OTA Update Failed.");
-    } else if (id == GHOTA_EVENT_NOUPDATE_AVAILABLE) {
-        ESP_LOGI(TAG_OTA, "No update available or firmware is already up to date.");
-    } else if (id == GHOTA_EVENT_FIRMWARE_UPDATE_PROGRESS) {
-        if (event_data) {
-            int progress = *((int*)event_data);
-            ESP_LOGI(TAG_OTA, "Firmware Update Progress: %d%%", progress);
-        }
+    char buf[128];
+    switch (id) {
+        case GHOTA_EVENT_FINISH_UPDATE:
+            snprintf(buf, sizeof(buf), "OTA Update Finished! Rebooting...");
+            update_ota_status_label(buf);
+            ESP_LOGI(TAG_OTA, "OTA Update Finished successfully. Rebooting device.");
+            vTaskDelay(1000 / portTICK_PERIOD_MS); // Give UI time to update
+            esp_restart();
+            break;
+        case GHOTA_EVENT_UPDATE_FAILED:
+            snprintf(buf, sizeof(buf), "OTA Update Failed.");
+            update_ota_status_label(buf);
+            ESP_LOGE(TAG_OTA, "OTA Update Failed.");
+            break;
+        case GHOTA_EVENT_NOUPDATE_AVAILABLE:
+            snprintf(buf, sizeof(buf), "No update available.\nFirmware is up to date.");
+            update_ota_status_label(buf);
+            ESP_LOGI(TAG_OTA, "No update available or firmware is already up to date.");
+            break;
+        case GHOTA_EVENT_FIRMWARE_UPDATE_PROGRESS:
+            if (event_data) {
+                int progress = *((int*)event_data);
+                snprintf(buf, sizeof(buf), "Downloading update... %d%%", progress);
+                update_ota_status_label(buf);
+                ESP_LOGI(TAG_OTA, "Firmware Update Progress: %d%%", progress);
+            }
+            break;
+        default:
+            break;
     }
 }
 
@@ -84,6 +125,18 @@ static void ota_task(void *pvParameter) {
     //        ESP_LOGW(TAG_OTA, "Failed to set ghota authentication.");
     //    }
     // }
+
+    // After ghota_client is initialized, before ghota_check:
+    char github_token[128] = {0};
+    if (ota_manager_get_github_token(github_token, sizeof(github_token))) {
+        if (ghota_set_auth(ghota_client, GITHUB_USER, github_token) != ESP_OK) {
+            ESP_LOGW(TAG_OTA, "Failed to set ghota authentication.");
+        } else {
+            ESP_LOGI(TAG_OTA, "Loaded GitHub token from NVS and set for ghota.");
+        }
+    } else {
+        ESP_LOGI(TAG_OTA, "No GitHub token found in NVS, proceeding without auth.");
+    }
 
     ESP_LOGI(TAG_OTA, "Checking for firmware updates from %s/%s, asset: %s", 
              ghconfig.orgname, ghconfig.reponame, ghconfig.filenamematch);
