@@ -43,7 +43,7 @@ static lv_fs_res_t sd_tell_cb(lv_fs_drv_t* drv, void* file_p_arg, uint32_t* pos_
 static void provision_github_token_from_sd(void) {
     const char* token_filename = "DEI/github_token.txt";
     if (s_sd_mutex == NULL) return;
-    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
         ESP_LOGE(TAG_SD, "Mutex timeout for GitHub token provisioning");
         return;
     }
