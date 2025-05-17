@@ -3,36 +3,22 @@
 #include <sys/stat.h> // For stat() in sd_raw_file_exists
 #include <errno.h> // Required for errno
 #include "esp_log.h"
+#include "sd_manager.h"
 
-static SemaphoreHandle_t s_raw_sd_mutex = NULL;
-static const char* s_raw_mount_point = NULL;
+// Expose the mutex for SD operations
+extern SemaphoreHandle_t s_sd_mutex;
+
+static const char* s_raw_mount_point = MOUNT_POINT;
 static const char* TAG_RAW_SD = "sd_raw_access";
 
 #define MAX_FULL_PATH_LEN 256 // Max length for full path including mount point
-
-esp_err_t sd_raw_init_access(SemaphoreHandle_t mutex, const char* mount_point) {
-    if (mutex == NULL || mount_point == NULL) {
-        ESP_LOGE(TAG_RAW_SD, "Mutex or mount point is NULL");
-        return ESP_ERR_INVALID_ARG;
-    }
-    s_raw_sd_mutex = mutex;
-    s_raw_mount_point = mount_point;
-    ESP_LOGI(TAG_RAW_SD, "Raw SD access initialized. Mount point: %s", s_raw_mount_point);
-    return ESP_OK;
-}
-
-// New function called from sd_manager.cpp
-esp_err_t sd_init_raw_access(void) {
-    extern SemaphoreHandle_t s_sd_mutex; // Reference from sd_manager.cpp
-    return sd_raw_init_access(s_sd_mutex, "/sdcard");
-}
 
 static void build_full_path(const char* path_suffix, char* full_path_out, size_t max_len) {
     snprintf(full_path_out, max_len, "%s/%s", s_raw_mount_point, path_suffix);
 }
 
 FILE* sd_raw_fopen(const char* path_suffix, const char* mode) {
-    if (s_raw_sd_mutex == NULL || s_raw_mount_point == NULL) {
+    if (s_sd_mutex == NULL || s_raw_mount_point == NULL) {
         ESP_LOGE(TAG_RAW_SD, "Raw SD access not initialized (fopen)");
         return NULL;
     }
@@ -45,12 +31,12 @@ FILE* sd_raw_fopen(const char* path_suffix, const char* mode) {
     build_full_path(path_suffix, full_path, sizeof(full_path));
 
     FILE* fp = NULL;
-    if (xSemaphoreTake(s_raw_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(30000)) == pdTRUE) {
         fp = fopen(full_path, mode);
         if (fp == NULL) {
             ESP_LOGE(TAG_RAW_SD, "Failed to open file: %s, mode: %s (errno %d: %s)", full_path, mode, errno, strerror(errno));
         }
-        xSemaphoreGive(s_raw_sd_mutex);
+        xSemaphoreGive(s_sd_mutex);
     } else {
         ESP_LOGE(TAG_RAW_SD, "fopen: Mutex timeout for %s", full_path);
     }
@@ -63,13 +49,13 @@ size_t sd_raw_fread(void* ptr, size_t size, size_t count, FILE* stream) {
         return 0;
     }
 
-    if (s_raw_sd_mutex == NULL) {
+    if (s_sd_mutex == NULL) {
         ESP_LOGE(TAG_RAW_SD, "Raw SD access not initialized (fread)");
         return 0;
     }
 
     size_t bytes_read = 0;
-    if (xSemaphoreTake(s_raw_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         bytes_read = fread(ptr, size, count, stream);
         if (bytes_read != count) {
             if (feof(stream)) {
@@ -78,7 +64,7 @@ size_t sd_raw_fread(void* ptr, size_t size, size_t count, FILE* stream) {
                 ESP_LOGE(TAG_RAW_SD, "Error reading file (errno %d: %s)", errno, strerror(errno));
             }
         }
-        xSemaphoreGive(s_raw_sd_mutex);
+        xSemaphoreGive(s_sd_mutex);
     } else {
         ESP_LOGE(TAG_RAW_SD, "fread: Mutex timeout");
     }
@@ -91,18 +77,18 @@ size_t sd_raw_fwrite(const void* ptr, size_t size, size_t count, FILE* stream) {
         return 0;
     }
 
-    if (s_raw_sd_mutex == NULL) {
+    if (s_sd_mutex == NULL) {
         ESP_LOGE(TAG_RAW_SD, "Raw SD access not initialized (fwrite)");
         return 0;
     }
 
     size_t bytes_written = 0;
-    if (xSemaphoreTake(s_raw_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         bytes_written = fwrite(ptr, size, count, stream);
         if (bytes_written != count) {
             ESP_LOGE(TAG_RAW_SD, "Failed to write all data (errno %d: %s)", errno, strerror(errno));
         }
-        xSemaphoreGive(s_raw_sd_mutex);
+        xSemaphoreGive(s_sd_mutex);
     } else {
         ESP_LOGE(TAG_RAW_SD, "fwrite: Mutex timeout");
     }
@@ -115,18 +101,18 @@ int sd_raw_fseek(FILE* stream, long offset, int whence) {
         return -1;
     }
 
-    if (s_raw_sd_mutex == NULL) {
+    if (s_sd_mutex == NULL) {
         ESP_LOGE(TAG_RAW_SD, "Raw SD access not initialized (fseek)");
         return -1;
     }
 
     int result = -1;
-    if (xSemaphoreTake(s_raw_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         result = fseek(stream, offset, whence);
         if (result != 0) {
             ESP_LOGE(TAG_RAW_SD, "Failed to seek (errno %d: %s)", errno, strerror(errno));
         }
-        xSemaphoreGive(s_raw_sd_mutex);
+        xSemaphoreGive(s_sd_mutex);
     } else {
         ESP_LOGE(TAG_RAW_SD, "fseek: Mutex timeout");
     }
@@ -139,18 +125,18 @@ long sd_raw_ftell(FILE* stream) {
         return -1L;
     }
 
-    if (s_raw_sd_mutex == NULL) {
+    if (s_sd_mutex == NULL) {
         ESP_LOGE(TAG_RAW_SD, "Raw SD access not initialized (ftell)");
         return -1L;
     }
 
     long position = -1L;
-    if (xSemaphoreTake(s_raw_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         position = ftell(stream);
         if (position < 0) {
             ESP_LOGE(TAG_RAW_SD, "Failed to get file position (errno %d: %s)", errno, strerror(errno));
         }
-        xSemaphoreGive(s_raw_sd_mutex);
+        xSemaphoreGive(s_sd_mutex);
     } else {
         ESP_LOGE(TAG_RAW_SD, "ftell: Mutex timeout");
     }
@@ -162,18 +148,18 @@ int sd_raw_fclose(FILE* stream) {
         return 0; // Not an error to close NULL
     }
 
-    if (s_raw_sd_mutex == NULL) {
+    if (s_sd_mutex == NULL) {
         ESP_LOGE(TAG_RAW_SD, "Raw SD access not initialized (fclose)");
         return EOF;
     }
 
     int result = EOF;
-    if (xSemaphoreTake(s_raw_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         result = fclose(stream);
         if (result != 0) {
             ESP_LOGE(TAG_RAW_SD, "Failed to close file (errno %d: %s)", errno, strerror(errno));
         }
-        xSemaphoreGive(s_raw_sd_mutex);
+        xSemaphoreGive(s_sd_mutex);
     } else {
         ESP_LOGE(TAG_RAW_SD, "fclose: Mutex timeout");
     }
@@ -186,7 +172,7 @@ int sd_raw_remove(const char* path_suffix) {
         return -1;
     }
 
-    if (s_raw_sd_mutex == NULL || s_raw_mount_point == NULL) {
+    if (s_sd_mutex == NULL || s_raw_mount_point == NULL) {
         ESP_LOGE(TAG_RAW_SD, "Raw SD access not initialized (remove)");
         return -1;
     }
@@ -195,12 +181,12 @@ int sd_raw_remove(const char* path_suffix) {
     build_full_path(path_suffix, full_path, sizeof(full_path));
 
     int result = -1;
-    if (xSemaphoreTake(s_raw_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         result = remove(full_path);
         if (result != 0) {
             ESP_LOGE(TAG_RAW_SD, "Failed to remove file: %s (errno %d: %s)", full_path, errno, strerror(errno));
         }
-        xSemaphoreGive(s_raw_sd_mutex);
+        xSemaphoreGive(s_sd_mutex);
     } else {
         ESP_LOGE(TAG_RAW_SD, "remove: Mutex timeout for %s", full_path);
     }
@@ -213,7 +199,7 @@ int sd_raw_rename(const char* old_path_suffix, const char* new_path_suffix) {
         return -1;
     }
 
-    if (s_raw_sd_mutex == NULL || s_raw_mount_point == NULL) {
+    if (s_sd_mutex == NULL || s_raw_mount_point == NULL) {
         ESP_LOGE(TAG_RAW_SD, "Raw SD access not initialized (rename)");
         return -1;
     }
@@ -224,13 +210,13 @@ int sd_raw_rename(const char* old_path_suffix, const char* new_path_suffix) {
     build_full_path(new_path_suffix, new_full_path, sizeof(new_full_path));
 
     int result = -1;
-    if (xSemaphoreTake(s_raw_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         result = rename(old_full_path, new_full_path);
         if (result != 0) {
             ESP_LOGE(TAG_RAW_SD, "Failed to rename file: %s to %s (errno %d: %s)", 
                     old_full_path, new_full_path, errno, strerror(errno));
         }
-        xSemaphoreGive(s_raw_sd_mutex);
+        xSemaphoreGive(s_sd_mutex);
     } else {
         ESP_LOGE(TAG_RAW_SD, "rename: Mutex timeout for %s", old_full_path);
     }
@@ -243,7 +229,7 @@ bool sd_raw_file_exists(const char* path_suffix) {
         return false;
     }
 
-    if (s_raw_sd_mutex == NULL || s_raw_mount_point == NULL) {
+    if (s_sd_mutex == NULL || s_raw_mount_point == NULL) {
         ESP_LOGE(TAG_RAW_SD, "Raw SD access not initialized (file_exists)");
         return false;
     }
@@ -252,10 +238,10 @@ bool sd_raw_file_exists(const char* path_suffix) {
     build_full_path(path_suffix, full_path, sizeof(full_path));
 
     bool exists = false;
-    if (xSemaphoreTake(s_raw_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         struct stat st;
         exists = (stat(full_path, &st) == 0);
-        xSemaphoreGive(s_raw_sd_mutex);
+        xSemaphoreGive(s_sd_mutex);
     } else {
         ESP_LOGE(TAG_RAW_SD, "file_exists: Mutex timeout for %s", full_path);
     }
@@ -268,7 +254,7 @@ long sd_raw_get_file_size(const char* path_suffix) {
         return -1L;
     }
 
-    if (s_raw_sd_mutex == NULL || s_raw_mount_point == NULL) {
+    if (s_sd_mutex == NULL || s_raw_mount_point == NULL) {
         ESP_LOGE(TAG_RAW_SD, "Raw SD access not initialized (get_file_size)");
         return -1L;
     }
@@ -277,14 +263,14 @@ long sd_raw_get_file_size(const char* path_suffix) {
     build_full_path(path_suffix, full_path, sizeof(full_path));
 
     long size = -1L;
-    if (xSemaphoreTake(s_raw_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         struct stat st;
         if (stat(full_path, &st) == 0) {
             size = st.st_size;
         } else {
             ESP_LOGE(TAG_RAW_SD, "Failed to get file size: %s (errno %d: %s)", full_path, errno, strerror(errno));
         }
-        xSemaphoreGive(s_raw_sd_mutex);
+        xSemaphoreGive(s_sd_mutex);
     } else {
         ESP_LOGE(TAG_RAW_SD, "get_file_size: Mutex timeout for %s", full_path);
     }

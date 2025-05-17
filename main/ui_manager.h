@@ -46,5 +46,6 @@ void ui_load_active_target_screen(lv_scr_load_anim_t anim_type,
                                   screen_create_func_t screen_creator_func);
 
 
+void ui_reinit_current_menu(void);
 
 #endif // UI_MANAGER_H

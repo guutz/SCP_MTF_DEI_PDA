@@ -19,8 +19,6 @@
 
 static const char *TAG_SD = "sd_manager";
 
-#define MOUNT_POINT "/sdcard"
-
 // Define SPI bus pins (ensure these are correct for your hardware)
 #define PIN_NUM_MISO  GPIO_NUM_19 
 #define PIN_NUM_MOSI  GPIO_NUM_23 
@@ -42,16 +40,12 @@ static lv_fs_res_t sd_tell_cb(lv_fs_drv_t* drv, void* file_p_arg, uint32_t* pos_
 
 static void provision_github_token_from_sd(void) {
     const char* token_filename = "DEI/github_token.txt";
-    if (s_sd_mutex == NULL) return;
-    if (xSemaphoreTake(s_sd_mutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
-        ESP_LOGE(TAG_SD, "Mutex timeout for GitHub token provisioning");
-        return;
-    }
+
     FILE* token_fp = sd_raw_fopen(token_filename, "r");
     if (token_fp) {
         char token[128] = {0};
-        size_t len = fread(token, 1, sizeof(token) - 1, token_fp);
-        fclose(token_fp);
+        size_t len = sd_raw_fread(token, 1, sizeof(token) - 1, token_fp);
+        sd_raw_fclose(token_fp);
         // Remove trailing newline if present
         if (len > 0) {
             int i = (int)len - 1;
@@ -74,9 +68,7 @@ static void provision_github_token_from_sd(void) {
                 nvs_close(nvs_handle);
                 ESP_LOGI(TAG_SD, "GitHub token loaded from SD and stored in NVS.");
                 // Delete the file after storing
-                char full_path[256];
-                snprintf(full_path, sizeof(full_path), "%s/%s", MOUNT_POINT, token_filename);
-                remove(full_path);
+                sd_raw_remove(token_filename);
                 ESP_LOGI(TAG_SD, "github_token.txt deleted from SD after provisioning.");
             } else {
                 ESP_LOGE(TAG_SD, "Failed to open NVS for writing GitHub token.");
@@ -87,7 +79,6 @@ static void provision_github_token_from_sd(void) {
     } else {
         ESP_LOGI(TAG_SD, "No github_token.txt found on SD, skipping token provisioning.");
     }
-    xSemaphoreGive(s_sd_mutex);
 }
 
 void sd_init(lv_task_t* task) {
@@ -157,12 +148,6 @@ void sd_init(lv_task_t* task) {
     // Register with LVGL
     sd_register_with_lvgl();
     
-    // Initialize raw SD access
-    esp_err_t raw_init_result = sd_raw_init_access(s_sd_mutex, MOUNT_POINT);
-    if (raw_init_result != ESP_OK) {
-        ESP_LOGE(TAG_SD, "Failed to initialize raw SD access: %s", esp_err_to_name(raw_init_result));
-        return;
-    }
     provision_github_token_from_sd();
 }
 

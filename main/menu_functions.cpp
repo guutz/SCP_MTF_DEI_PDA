@@ -9,10 +9,9 @@ static void blink_mcp_led(MCP23008_NamedPin pin, uint32_t duration_ms);
 
 extern mcp23008_t mcp23008_device;
 
-// Global pointer to OTA status label for UI updates from OTA events
-lv_obj_t* ota_status_label = nullptr;
-static void ota_yes_cb(lv_obj_t *obj, lv_event_t event);
-static void no_cb(lv_obj_t *obj, lv_event_t event);
+static bool modal_open = false;
+
+
 
 void register_menu_functions(void) {
     // Register the menu functions with the predefined function list
@@ -23,104 +22,15 @@ void register_menu_functions(void) {
     G_PredefinedFunctions["TELESCOPE_CONTROL"] = open_telescope_control_modal;
 }
 
-// Thread-safe function to update OTA status label from OTA event callback
-void update_ota_status_label(const char* text) {
-    if (ota_status_label && text) {
-        // Use LVGL's thread-safe API if called from non-GUI thread
-        if (lv_obj_get_disp(ota_status_label) && lv_disp_get_default()) {
-            lv_label_set_text(ota_status_label, text);
-            lv_obj_align(ota_status_label, NULL, LV_ALIGN_CENTER, 0, 0);
+
+void handle_focus_change(lv_obj_t *obj, lv_event_t event) {
+    if (event == LV_EVENT_KEY) {
+        uint32_t key = *((uint32_t *)lv_event_get_data()); // Retrieve key directly from event data
+        if (key == LV_KEY_DOWN || key == LV_KEY_RIGHT) {
+            lv_group_focus_next((lv_group_t *)lv_obj_get_group(obj)); // Cast to lv_group_t*
         }
-    }
-}
-
-void trigger_ota_update_from_menu(void) {
-    ESP_LOGI(TAG_MENU_FUNC, "OTA update triggered from menu");
-    wifi_mode_t current_mode;
-    esp_err_t err = esp_wifi_get_mode(&current_mode);
-    bool wifi_is_on = (err == ESP_OK && current_mode != WIFI_MODE_NULL);
-
-    if (!wifi_is_on) {
-        auto yes_cb = [](lv_obj_t *obj, lv_event_t event) {
-            if (event == LV_EVENT_CLICKED) {
-                close_modal_from_child(obj);
-                lv_obj_t *status_msg = lv_label_create(lv_scr_act(), NULL);
-                lv_label_set_text(status_msg, "Enabling WiFi...");
-                lv_obj_add_style(status_msg, LV_OBJ_PART_MAIN, &style_default_label);
-                lv_obj_align(status_msg, NULL, LV_ALIGN_CENTER, 0, 0);
-                lv_task_t *wifi_task = lv_task_create([](lv_task_t *task) {
-                    g_wifi_intentional_stop = false;
-                    Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
-                    lv_obj_t *msg = (lv_obj_t*)task->user_data;
-                    if (msg) {
-                        lv_label_set_text(msg, "WiFi enabled. Checking for updates...");
-                        lv_task_t *ota_task = lv_task_create([](lv_task_t *ota_task) {
-                            trigger_ota_update();
-                            lv_obj_t *msg = (lv_obj_t*)ota_task->user_data;
-                            if (msg) {
-                                lv_label_set_text(msg, "OTA update started.\nSee log for progress.");
-                                lv_obj_del(msg);
-                            }
-                            lv_task_del(ota_task);
-                        }, 5000, LV_TASK_PRIO_MID, NULL);
-                        ota_task->user_data = msg;
-                        lv_task_once(ota_task);
-                    }
-                    lv_task_del(task);
-                }, 100, LV_TASK_PRIO_MID, NULL);
-                wifi_task->user_data = status_msg;
-                lv_task_once(wifi_task);
-            }
-        };
-        auto no_cb = [](lv_obj_t *obj, lv_event_t event) {
-            if (event == LV_EVENT_CLICKED) {
-                close_modal_from_child(obj);
-            }
-        };
-        create_modal_dialog(
-            "WIFI REQUIRED",
-            "WiFi is currently OFF.\nIt must be enabled for OTA updates.\nEnable WiFi and continue?",
-            "YES", yes_cb, "NO", no_cb
-        );
-        return;
-    }
-
-    // Create the OTA status label and assign to global pointer
-    ota_status_label = lv_label_create(lv_scr_act(), NULL);
-    lv_label_set_text(ota_status_label, "Checking for updates...\nPlease wait.");
-    lv_obj_add_style(ota_status_label, LV_OBJ_PART_MAIN, &style_default_label);
-    lv_obj_align(ota_status_label, NULL, LV_ALIGN_CENTER, 0, 0);
-
-    create_modal_dialog(
-        "OTA UPDATE",
-        "Start firmware update?\nDevice will reboot if update is available.",
-        "YES", ota_yes_cb, "NO", no_cb
-    );
-}
-
-// Static callback for YES button in OTA dialog
-static void ota_yes_cb(lv_obj_t *obj, lv_event_t event) {
-    if (event == LV_EVENT_CLICKED) {
-        close_modal_from_child(obj);
-        if (ota_status_label) {
-            lv_label_set_text(ota_status_label, "Checking for updates...\nPlease wait.");
-            lv_obj_align(ota_status_label, NULL, LV_ALIGN_CENTER, 0, 0);
-        }
-        lv_task_t *ota_task = lv_task_create([](lv_task_t *task) {
-            trigger_ota_update();
-            lv_task_del(task);
-        }, 100, LV_TASK_PRIO_MID, NULL);
-        lv_task_once(ota_task);
-    }
-}
-
-// Static callback for NO button in OTA dialog
-static void no_cb(lv_obj_t *obj, lv_event_t event) {
-    if (event == LV_EVENT_CLICKED) {
-        close_modal_from_child(obj);
-        if (ota_status_label) {
-            lv_obj_del(ota_status_label);
-            ota_status_label = nullptr;
+        if (key == LV_KEY_UP || key == LV_KEY_LEFT) {
+            lv_group_focus_prev((lv_group_t *)lv_obj_get_group(obj)); // Cast to lv_group_t*
         }
     }
 }
@@ -191,17 +101,21 @@ void toggle_wifi_from_menu(void) {
                 wifi_task->user_data = status_msg;
                 lv_task_once(wifi_task);
             }
+        } else {
+            handle_focus_change(obj, event);
         }
     };
     auto no_cb = [](lv_obj_t *obj, lv_event_t event) {
         if (event == LV_EVENT_CLICKED) {
             close_modal_from_child(obj);
+        } else {
+            handle_focus_change(obj, event);
         }
     };
     create_modal_dialog(
         "WIFI CONTROL",
         wifi_is_on ? "WiFi is currently ON\nDo you want to turn it OFF?" : "WiFi is currently OFF\nDo you want to turn it ON?",
-        "YES", yes_cb, "NO", no_cb, (void*)(wifi_is_on ? 1 : 0), nullptr, 3
+        "YES", yes_cb, "NO", no_cb, (void*)(wifi_is_on ? 1 : 0), nullptr
     );
 }
 
@@ -212,7 +126,7 @@ void show_wifi_status_from_menu(void) {
         "Checking WiFi status...",
         "CLOSE",
         ok_button_cb,
-        nullptr, nullptr, nullptr, nullptr, 1.5 // taller dialog for status
+        nullptr, nullptr, nullptr, nullptr
     );
     // Use dialog_parts.msg directly for the message label
     lv_task_t *status_task = lv_task_create([](lv_task_t *task) {
@@ -275,10 +189,14 @@ ModalDialogParts create_modal_dialog(const char* title_text, const char* msg_tex
                                     const char* btn2_text, lv_event_cb_t btn2_cb,
                                     void* btn1_user_data, void* btn2_user_data,
                                     int dialog_height_div) {
+
+    if (modal_open) ui_reinit_current_menu();
+    modal_open = true;
+
     static lv_style_t modal_style;
     lv_style_init(&modal_style);
     lv_style_set_bg_color(&modal_style, LV_STATE_DEFAULT, TERMINAL_COLOR_BACKGROUND);
-    lv_style_set_bg_opa(&modal_style, LV_STATE_DEFAULT, LV_OPA_70);
+    lv_style_set_bg_opa(&modal_style, LV_STATE_DEFAULT, LV_OPA_90);
     lv_style_set_border_width(&modal_style, LV_STATE_DEFAULT, 0);
 
     ModalDialogParts parts = {};
@@ -287,20 +205,23 @@ ModalDialogParts create_modal_dialog(const char* title_text, const char* msg_tex
     lv_obj_set_pos(parts.modal_bg, 0, 0);
     lv_obj_set_size(parts.modal_bg, LV_HOR_RES, LV_VER_RES);
 
-    parts.dialog = lv_obj_create(parts.modal_bg, NULL);
-    lv_obj_add_style(parts.dialog, LV_OBJ_PART_MAIN, &style_default_screen_bg);
+    parts.dialog = lv_page_create(parts.modal_bg, NULL);
+    lv_obj_add_style(parts.dialog, LV_PAGE_PART_BG, &style_default_screen_bg);
     lv_obj_set_size(parts.dialog, LV_HOR_RES * 8 / 10, LV_VER_RES / dialog_height_div);
     lv_obj_align(parts.dialog, NULL, LV_ALIGN_CENTER, 0, 0);
+    lv_page_set_scrl_layout(parts.dialog, LV_LAYOUT_CENTER);
 
     parts.title = lv_label_create(parts.dialog, NULL);
+    lv_label_set_long_mode(parts.title, LV_LABEL_LONG_BREAK);
     lv_label_set_text(parts.title, title_text);
     lv_obj_add_style(parts.title, LV_OBJ_PART_MAIN, &style_default_label);
-    lv_obj_align(parts.title, parts.dialog, LV_ALIGN_IN_TOP_MID, 0, 10);
+    lv_obj_set_width(parts.title, lv_obj_get_width(parts.dialog));
 
     parts.msg = lv_label_create(parts.dialog, NULL);
+    lv_label_set_long_mode(parts.msg, LV_LABEL_LONG_BREAK);
     lv_label_set_text(parts.msg, msg_text);
     lv_obj_add_style(parts.msg, LV_OBJ_PART_MAIN, &style_default_label);
-    lv_obj_align(parts.msg, parts.dialog, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_width(parts.msg, lv_obj_get_width(parts.dialog));
 
     parts.btn1 = nullptr;
     parts.btn2 = nullptr;
@@ -322,16 +243,21 @@ ModalDialogParts create_modal_dialog(const char* title_text, const char* msg_tex
         if (btn2_cb) lv_obj_set_event_cb(parts.btn2, btn2_cb);
         if (btn2_user_data) lv_obj_set_user_data(parts.btn2, btn2_user_data);
     }
+
+    lv_group_t* joy_group = lvgl_joystick_get_group();
+    lv_group_remove_all_objs(joy_group);
+    if (parts.btn1) lv_group_add_obj(joy_group, parts.btn1);
+    if (parts.btn2) lv_group_add_obj(joy_group, parts.btn2);
+    lv_group_focus_obj(parts.btn1 ? parts.btn1 : parts.btn2);
+
     return parts;
 }
 
 // Helper to close a modal dialog from any child object (e.g., button)
 static void close_modal_from_child(lv_obj_t *obj) {
-    if (!obj) return;
-    lv_obj_t *dialog = lv_obj_get_parent(obj);
-    if (!dialog) return;
-    lv_obj_t *modal_bg = lv_obj_get_parent(dialog);
-    if (modal_bg) lv_obj_del(modal_bg);
+    if (!modal_open) return; // Prevent double close
+    modal_open = false;
+    ui_reinit_current_menu();
 }
 
 // Generic OK button callback for modal dialogs
@@ -346,8 +272,7 @@ void play_audio_file_in_background(void) {
     const char* audio_file_path = "DEI/sounds/GameStart.raw"; // Replace with actual file path
     ESP_LOGI(TAG_MENU_FUNC, "Playing audio file in the background: %s", audio_file_path);
 
-    // Correct call for audio playback (assuming audio_player_start is the correct function)
-    esp_err_t result = audio_player_play_file(audio_file_path, 16000);
+    esp_err_t result = audio_player_play_file(audio_file_path, 8000);
     if (result != ESP_OK) {
         ESP_LOGE(TAG_MENU_FUNC, "Failed to play audio file: %s", esp_err_to_name(result));
     }
@@ -356,12 +281,8 @@ void play_audio_file_in_background(void) {
 void open_telescope_control_modal(void) {
     static TelescopeController* telescope = nullptr;
     static lv_task_t* joystick_task = nullptr;
-    static bool modal_open = false;
     static char last_sent[64] = "";
     static char last_recv[128] = "";
-
-    if (modal_open) return; // Prevent multiple modals
-    modal_open = true;
 
     // Allocate and initialize the controller (TeleProxy only, no double init)
     // Add labels for last sent/received commands
@@ -393,17 +314,17 @@ void open_telescope_control_modal(void) {
         "Telescope Control",
         "Use the joystick to move the telescope.\nPress CLOSE to exit.",
         "CLOSE", nullptr,
-        nullptr, nullptr, nullptr, nullptr, 2
+        nullptr, nullptr, nullptr, nullptr
     );
-    lv_group_t* joy_group = lvgl_joystick_get_group();
-    lv_group_add_obj(joy_group, dialog.btn1);
 
     // Add labels for last sent/received commands
     sent_label = lv_label_create(dialog.dialog, NULL);
     lv_label_set_text(sent_label, "Last sent: ");
+    lv_obj_add_style(sent_label, LV_OBJ_PART_MAIN, &style_default_label);
     lv_obj_align(sent_label, dialog.msg, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
     recv_label = lv_label_create(dialog.dialog, NULL);
     lv_label_set_text(recv_label, "Last recv: ");
+    lv_obj_add_style(recv_label, LV_OBJ_PART_MAIN, &style_default_label);
     lv_obj_align(recv_label, sent_label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5);
 
     // Allocate and initialize the TeleProxy controller only ONCE
@@ -420,7 +341,7 @@ void open_telescope_control_modal(void) {
                     modal_open = false;
                 }
             },
-            nullptr, nullptr, nullptr, nullptr, 2
+            nullptr, nullptr, nullptr, nullptr
         );
         lv_group_t* joy_group = lvgl_joystick_get_group();
         lv_group_add_obj(joy_group, err_dialog.btn1);

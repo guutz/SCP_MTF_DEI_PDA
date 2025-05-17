@@ -54,26 +54,22 @@ static void ghota_event_callback(void* handler_args, esp_event_base_t base, int3
     switch (id) {
         case GHOTA_EVENT_FINISH_UPDATE:
             snprintf(buf, sizeof(buf), "OTA Update Finished! Rebooting...");
-            update_ota_status_label(buf);
             ESP_LOGI(TAG_OTA, "OTA Update Finished successfully. Rebooting device.");
             vTaskDelay(1000 / portTICK_PERIOD_MS); // Give UI time to update
             esp_restart();
             break;
         case GHOTA_EVENT_UPDATE_FAILED:
             snprintf(buf, sizeof(buf), "OTA Update Failed.");
-            update_ota_status_label(buf);
             ESP_LOGE(TAG_OTA, "OTA Update Failed.");
             break;
         case GHOTA_EVENT_NOUPDATE_AVAILABLE:
             snprintf(buf, sizeof(buf), "No update available.\nFirmware is up to date.");
-            update_ota_status_label(buf);
             ESP_LOGI(TAG_OTA, "No update available or firmware is already up to date.");
             break;
         case GHOTA_EVENT_FIRMWARE_UPDATE_PROGRESS:
             if (event_data) {
                 int progress = *((int*)event_data);
                 snprintf(buf, sizeof(buf), "Downloading update... %d%%", progress);
-                update_ota_status_label(buf);
                 ESP_LOGI(TAG_OTA, "Firmware Update Progress: %d%%", progress);
             }
             break;

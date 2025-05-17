@@ -1,3 +1,6 @@
+#ifndef MENU_FUNCTIONS_H
+#define MENU_FUNCTIONS_H
+
 #include "joystick.h" // Added for lvgl_joystick_get_group()
 #include "telescope_controller.h" // For telescope controller
 #include "audio_player.h"
@@ -11,6 +14,8 @@
 #include "sd_manager.h"
 #include "sd_raw_access.h"
 #include "ui_manager.h"
+
+void handle_focus_change(lv_obj_t *obj, lv_event_t event);
 
 // Struct to hold references to modal dialog parts for easy access
 struct ModalDialogParts {
@@ -27,7 +32,7 @@ ModalDialogParts create_modal_dialog(const char* title_text, const char* msg_tex
                                     const char* btn1_text, lv_event_cb_t btn1_cb,
                                     const char* btn2_text = nullptr, lv_event_cb_t btn2_cb = nullptr,
                                     void* btn1_user_data = nullptr, void* btn2_user_data = nullptr,
-                                    int dialog_height_div = 3);
+                                    int dialog_height_div = 1);
 
 
 
@@ -68,14 +73,4 @@ void play_audio_file_in_background(void);
  */
 void open_telescope_control_modal(void);
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// Expose the OTA status label pointer and update function
-extern lv_obj_t* ota_status_label;
-void update_ota_status_label(const char* text);
-
-#ifdef __cplusplus
-}
 #endif

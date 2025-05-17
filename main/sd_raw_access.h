@@ -11,15 +11,6 @@ extern "C" {
 #endif
 
 /**
- * @brief Initializes the raw SD card access module.
- * 
- * @param mutex The mutex handle created and managed by sd_manager.
- * @param mount_point The mount point string (e.g., "/sdcard").
- * @return ESP_OK on success, ESP_FAIL otherwise.
- */
-esp_err_t sd_raw_init_access(SemaphoreHandle_t mutex, const char* mount_point);
-
-/**
  * @brief Opens a file on the SD card.
  * 
  * @param path_suffix Path to the file relative to the SD card mount point (e.g., "data/myfile.txt").

@@ -7,6 +7,8 @@
 #include "freertos/semphr.h"
 #include "menu_structures.h" // Include menu structures
 
+#define MOUNT_POINT "/sdcard"
+
 // Expose the mutex for SD operations
 extern SemaphoreHandle_t s_sd_mutex;
 

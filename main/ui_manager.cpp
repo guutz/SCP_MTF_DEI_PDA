@@ -210,10 +210,10 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
 
 
     lv_obj_t *title_label = lv_label_create(screen, NULL);
+    lv_label_set_long_mode(title_label, LV_LABEL_LONG_BREAK);
     lv_obj_add_style(title_label, LV_LABEL_PART_MAIN, &style_default_label);
     lv_label_set_text(title_label, definition->title.c_str());
     lv_obj_set_width(title_label, lv_obj_get_width(screen) - (2 * TERMINAL_PADDING_HORIZONTAL)); // Use new padding
-    lv_label_set_long_mode(title_label, LV_LABEL_LONG_SROLL_CIRC);
     lv_label_set_align(title_label, LV_LABEL_ALIGN_CENTER);
     lv_obj_align(title_label, NULL, LV_ALIGN_IN_TOP_MID, 0, TERMINAL_PADDING_VERTICAL_TITLE_TOP); // Use new padding
 
@@ -246,11 +246,11 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
             lv_obj_add_style(static_label_obj, LV_LABEL_PART_MAIN, &style_default_label);
 
             // --- Try this order of operations ---
-            // 1. Set the text first.
-            lv_label_set_text(static_label_obj, item_def_from_vector.text_to_display.c_str());
-
             // 2. Then, set the long mode.
             lv_label_set_long_mode(static_label_obj, LV_LABEL_LONG_BREAK);
+
+            // 1. Set the text first.
+            lv_label_set_text(static_label_obj, item_def_from_vector.text_to_display.c_str());
 
             // 3. Finally, set the width of the label.
             //    Use the explicitly calculated container width to be certain.
@@ -274,14 +274,16 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
         } else if (item_def_from_vector.render_type == RENDER_AS_BUTTON) {
             lv_obj_t *btn = lv_btn_create(screen, NULL);
             lv_obj_add_style(btn, LV_BTN_PART_MAIN, &style_default_button); 
-            lv_obj_set_size(btn, lv_obj_get_width(screen) - (2 * horizontal_padding), button_height); 
+            lv_obj_set_width(btn, lv_obj_get_width(screen) - (2 * horizontal_padding)); 
             lv_obj_align(btn, NULL, LV_ALIGN_IN_TOP_MID, 0, item_y_offset);
-            
-            item_y_offset += lv_obj_get_height(btn) + item_spacing;
 
             lv_obj_t *btn_label_obj = lv_label_create(btn, NULL);
+            lv_label_set_long_mode(btn_label_obj, LV_LABEL_LONG_BREAK);
+            lv_obj_set_width(btn_label_obj, lv_obj_get_width(btn) - (2 * horizontal_padding)); // Use new padding
             lv_label_set_text(btn_label_obj, item_def_from_vector.text_to_display.c_str());
             lv_obj_align(btn_label_obj, NULL, LV_ALIGN_CENTER, 0, 0);
+
+            item_y_offset += lv_obj_get_height(btn) + item_spacing;
 
             ButtonActionContext* btn_ctx = new ButtonActionContext();
             btn_ctx->item_def = item_def_from_vector; 
@@ -435,10 +437,10 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
     lv_obj_set_size(screen, lv_disp_get_hor_res(NULL), lv_disp_get_ver_res(NULL));
 
     lv_obj_t *title_label_ts = lv_label_create(screen, NULL); 
+    lv_label_set_long_mode(title_label_ts, LV_LABEL_LONG_BREAK);
     lv_obj_add_style(title_label_ts, LV_LABEL_PART_MAIN, &style_default_label); 
     lv_label_set_text(title_label_ts, title.c_str());
     lv_obj_set_width(title_label_ts, lv_obj_get_width(screen) - 20);
-    lv_label_set_long_mode(title_label_ts, LV_LABEL_LONG_SROLL_CIRC);
     lv_label_set_align(title_label_ts, LV_LABEL_ALIGN_CENTER);
     lv_obj_align(title_label_ts, NULL, LV_ALIGN_IN_TOP_MID, 0, 10);
 
@@ -456,7 +458,7 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
     lv_obj_t *text_content_label_ts = lv_label_create(text_page, NULL); 
     lv_obj_add_style(text_content_label_ts, LV_LABEL_PART_MAIN, &style_default_label); 
     lv_label_set_long_mode(text_content_label_ts, LV_LABEL_LONG_BREAK); 
-    lv_obj_set_width(text_content_label_ts, lv_page_get_width_fit(text_page)); 
+    lv_obj_set_width(text_content_label_ts, lv_obj_get_width(text_page)); 
 
 
     if (is_file) {
@@ -477,12 +479,12 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
     lv_label_set_text(btn_back_label, "Press Enter To Go Back");
     lv_obj_align(btn_back_label, NULL, LV_ALIGN_CENTER, 0, 0);
 
+    // Create back button and context as before
     ButtonActionContext* back_button_ctx = new ButtonActionContext();
     back_button_ctx->item_def.action = ACTION_GO_BACK; 
     back_button_ctx->item_def.text_to_display = "Back"; 
     back_button_ctx->on_screen_name = title; 
     back_button_ctx->invoking_parent_for_on_screen = actual_invoking_parent_name; 
-    
     lv_obj_set_user_data(btn_back, back_button_ctx); // btn_back gets its own context
     lv_obj_set_event_cb(btn_back, dynamic_button_event_handler);
 
@@ -504,4 +506,14 @@ static lv_obj_t* create_text_display_screen_impl(const std::string& title, const
         lv_group_focus_obj(text_page);
     }
     return screen;
+}
+
+void ui_reinit_current_menu(void) {
+    ESP_LOGI(TAG_UI_MGR, "Reinitializing current menu: '%s'", G_TargetMenuNameForCreation.c_str());
+    auto it = G_MenuScreens.find(G_TargetMenuNameForCreation);
+    if (it != G_MenuScreens.end()) {
+        ui_load_active_target_screen(LV_SCR_LOAD_ANIM_MOVE_LEFT, 500, 0, true, create_dynamic_menu_screen_wrapper);
+    } else {
+        ESP_LOGE(TAG_UI_MGR, "Cannot reinitialize. Current target menu '%s' not found.", G_TargetMenuNameForCreation.c_str());
+    }
 }
