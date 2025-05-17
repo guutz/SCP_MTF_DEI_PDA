@@ -294,18 +294,22 @@ void open_telescope_control_modal(void) {
         lv_obj_t* sent;
         lv_obj_t* recv;
         TeleProxy(lv_obj_t* s, lv_obj_t* r) : sent(s), recv(r) {}
-        esp_err_t send_command(const char* cmd, bool add_cr = true, int send_delay_ms = 8, int recv_delay_ms = 8) {
+        esp_err_t send_command(const char* cmd, bool add_cr = true, int send_delay_ms = 8, int recv_delay_ms = 8) override {
             snprintf(last_sent, sizeof(last_sent), "%s", cmd);
             lv_label_set_text_fmt(sent, "Last sent: %s", last_sent);
             blink_mcp_led(MCP_PIN_ETH_LED_1, 100);
             return TelescopeController::send_command(cmd, add_cr, send_delay_ms, recv_delay_ms);
         }
-        esp_err_t read_response(char* buffer, size_t buffer_len, int timeout_ms = 500) {
+        esp_err_t read_response(char* buffer, size_t buffer_len, int timeout_ms = 500) override {
             esp_err_t ret = TelescopeController::read_response(buffer, buffer_len, timeout_ms);
             snprintf(last_recv, sizeof(last_recv), "%s", buffer);
             lv_label_set_text_fmt(recv, "Last recv: %s", last_recv);
             blink_mcp_led(MCP_PIN_ETH_LED_2, 100);
             return ret;
+        }
+        void process_joystick_input(const JoystickState_t* joystick_state) override {
+            // Call base, but all send_command/read_response will go through proxy
+            TelescopeController::process_joystick_input(joystick_state);
         }
     };
 

@@ -19,12 +19,12 @@
 class TelescopeController {
 public:
     TelescopeController();
-    ~TelescopeController();
+    virtual ~TelescopeController();
 
     esp_err_t init();
-    void process_joystick_input(const JoystickState_t* joystick_state);
-    esp_err_t send_command(const char* cmd, bool add_cr = true, int send_delay_ms = 8, int recv_delay_ms = 8);
-    esp_err_t read_response(char* buffer, size_t buffer_len, int timeout_ms = 500);
+    virtual void process_joystick_input(const JoystickState_t* joystick_state);
+    virtual esp_err_t send_command(const char* cmd, bool add_cr = true, int send_delay_ms = 8, int recv_delay_ms = 8);
+    virtual esp_err_t read_response(char* buffer, size_t buffer_len, int timeout_ms = 500);
 
 private:
     void startup_sequence();

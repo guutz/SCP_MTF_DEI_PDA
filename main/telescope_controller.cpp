@@ -250,39 +250,41 @@ void TelescopeController::process_joystick_input(const JoystickState_t* joystick
     // Or send SPA to be sure:
     // send_command("SPA", true, 8, 5); // Stop Previous Activity / Park Axis
 
+    // Joystick mapping constants
+    const int JOYSTICK_MIN = 0;
+    const int JOYSTICK_MAX = 4095;
+    const int JOYSTICK_CENTER = (JOYSTICK_MAX + JOYSTICK_MIN) / 2; // 2047
+    // Use your existing deadzone value
+
     int az_speed = 0;
     int el_speed = 0;
 
     // Map joystick X (azimuth)
-    if (joystick_state->x > JOYSTICK_DEADZONE) {
-        az_speed = ((joystick_state->x - JOYSTICK_DEADZONE) * MAX_AZ_SPEED) / (JOYSTICK_MAX_VALUE - JOYSTICK_DEADZONE);
-        az_speed = (az_speed > MAX_AZ_SPEED) ? MAX_AZ_SPEED : az_speed; // Cap speed
-    } else if (joystick_state->x < -JOYSTICK_DEADZONE) {
-        az_speed = ((joystick_state->x + JOYSTICK_DEADZONE) * MAX_AZ_SPEED) / (JOYSTICK_MAX_VALUE - JOYSTICK_DEADZONE);
-        az_speed = (az_speed < -MAX_AZ_SPEED) ? -MAX_AZ_SPEED : az_speed; // Cap speed
+    int dx = joystick_state->y - JOYSTICK_CENTER;
+    if (abs(dx) > JOYSTICK_DEADZONE) {
+        az_speed = (dx * MAX_AZ_SPEED) / (JOYSTICK_CENTER - JOYSTICK_DEADZONE);
+        // Clamp to limits
+        if (az_speed > MAX_AZ_SPEED) az_speed = MAX_AZ_SPEED;
+        if (az_speed < -MAX_AZ_SPEED) az_speed = -MAX_AZ_SPEED;
+    } else {
+        az_speed = 0;
     }
 
-    // Map joystick Y (elevation) - Note: Joystick Y often inverted (up is negative)
-    // Assuming positive joystick_state->y means "up" command for telescope
-    if (joystick_state->y > JOYSTICK_DEADZONE) {
-        el_speed = ((joystick_state->y - JOYSTICK_DEADZONE) * MAX_EL_SPEED) / (JOYSTICK_MAX_VALUE - JOYSTICK_DEADZONE);
-        el_speed = (el_speed > MAX_EL_SPEED) ? MAX_EL_SPEED : el_speed;
-    } else if (joystick_state->y < -JOYSTICK_DEADZONE) {
-        el_speed = ((joystick_state->y + JOYSTICK_DEADZONE) * MAX_EL_SPEED) / (JOYSTICK_MAX_VALUE - JOYSTICK_DEADZONE);
-        el_speed = (el_speed < -MAX_EL_SPEED) ? -MAX_EL_SPEED : el_speed;
+    // Map joystick Y (elevation)
+    int dy = joystick_state->x - JOYSTICK_CENTER;
+    if (abs(dy) > JOYSTICK_DEADZONE) {
+        el_speed = (dy * MAX_EL_SPEED) / (JOYSTICK_CENTER - JOYSTICK_DEADZONE);
+        if (el_speed > MAX_EL_SPEED) el_speed = MAX_EL_SPEED;
+        if (el_speed < -MAX_EL_SPEED) el_speed = -MAX_EL_SPEED;
+    } else {
+        el_speed = 0;
     }
-    
-    // Only send commands if there's a change or significant speed
-    // For simplicity, send if speed is non-zero. A more advanced version would track previous speed.
+
     char command_buffer[32];
     if (az_speed != 0) {
         snprintf(command_buffer, sizeof(command_buffer), "AZV,%d", az_speed);
         send_command(command_buffer);
-        // No specific response expected for AZV/ELV other than command echo or error
-        // read_response(response_buffer, sizeof(response_buffer), 5); 
     } else {
-        // Send stop command if joystick is centered after movement
-        // Check if we need to send AZV,0 if previous speed was non-zero
         send_command("AZV,0"); 
     }
 
