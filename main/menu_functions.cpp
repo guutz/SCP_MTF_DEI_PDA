@@ -8,7 +8,7 @@ static void close_modal_from_child(lv_obj_t *obj);
 static void ok_button_cb(lv_obj_t *obj, lv_event_t event);
 static void blink_mcp_led(MCP23008_NamedPin pin, uint32_t duration_ms);
 
-extern mcp23008_t mcp23008_device;
+extern mcp23008_t main_gpio_extender; // Extern for the main GPIO extender
 
 static bool modal_open = false;
 
@@ -374,7 +374,7 @@ void open_telescope_control_modal(void) {
     joystick_task = lv_task_create([](lv_task_t *task) {
         if (!telescope) return;
         JoystickState_t js;
-        if (joystick_read_state(&mcp23008_device, &js) == ESP_OK) {
+        if (joystick_read_state(&main_gpio_extender, &js) == ESP_OK) {
             telescope->process_joystick_input(&js);
         }
     }, 100, LV_TASK_PRIO_LOW, NULL); // 100ms polling
@@ -382,10 +382,10 @@ void open_telescope_control_modal(void) {
 
 // Helper: blink any MCP23008 LED for a given duration (non-blocking)
 static void blink_mcp_led(MCP23008_NamedPin pin, uint32_t duration_ms) {
-    mcp23008_wrapper_write_pin(&mcp23008_device, pin, true);
+    mcp23008_wrapper_write_pin(&main_gpio_extender, pin, true);
     lv_task_t* led_task = lv_task_create([](lv_task_t* task) {
         MCP23008_NamedPin pin = (MCP23008_NamedPin)(uintptr_t)task->user_data;
-        mcp23008_wrapper_write_pin(&mcp23008_device, pin, false);
+        mcp23008_wrapper_write_pin(&main_gpio_extender, pin, false);
         lv_task_del(task);
     }, duration_ms, LV_TASK_PRIO_LOW, (void*)(uintptr_t)pin);
     lv_task_once(led_task);

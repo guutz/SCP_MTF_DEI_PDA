@@ -9,18 +9,10 @@
 extern "C" {
 #endif
 
-// Default IODIR:
-// MCP_PIN_JOYSTICK_ENTER    (Input)
-// MCP_PIN_BATT_SENSE_SWITCH (Output) <--- CHANGED TO OUTPUT
-// MCP_PIN_ACCESSORY_C       (Input)
-// MCP_PIN_CD4053B_S1        (Output)
-// MCP_PIN_CD4053B_S2        (Output)
-// MCP_PIN_CD4053B_S3        (Output)
-// MCP_PIN_ETH_LED_1         (Output)
-// MCP_PIN_ETH_LED_2         (Output)
+
 #define MCP23008_DEFAULT_IODIR ( \
     (1 << MCP_PIN_JOYSTICK_ENTER)    | \
-    (0 << MCP_PIN_BATT_SENSE_SWITCH)| /* Changed to Output */ \
+    (0 << MCP_PIN_BATT_SENSE_SWITCH)| \
     (1 << MCP_PIN_ACCESSORY_C)      | \
     (0 << MCP_PIN_CD4053B_S1)       | \
     (0 << MCP_PIN_CD4053B_S2)       | \
@@ -29,15 +21,6 @@ extern "C" {
     (0 << MCP_PIN_ETH_LED_2)          \
 )
 
-// Default GPPU:
-// MCP_PIN_JOYSTICK_ENTER    (Pull-up enabled)
-// MCP_PIN_BATT_SENSE_SWITCH (No Pull-up) <--- CHANGED TO NO PULL-UP
-// MCP_PIN_ACCESSORY_C       (Pull-up enabled)
-// MCP_PIN_CD4053B_S1        (No pull-up)
-// MCP_PIN_CD4053B_S2        (No pull-up)
-// MCP_PIN_CD4053B_S3        (No pull-up)
-// MCP_PIN_ETH_LED_1         (No pull-up)
-// MCP_PIN_ETH_LED_2         (No pull-up)
 #define MCP23008_DEFAULT_GPPU ( \
     (1 << MCP_PIN_JOYSTICK_ENTER)    | \
     (0 << MCP_PIN_BATT_SENSE_SWITCH) | \
@@ -47,6 +30,28 @@ extern "C" {
     (0 << MCP_PIN_CD4053B_S3)       | \
     (0 << MCP_PIN_ETH_LED_1)        | \
     (0 << MCP_PIN_ETH_LED_2)          \
+)
+
+// --- SECOND MCP23008 SUPPORT ---
+#define MCP23008_2_DEFAULT_IODIR ( \
+    (0 << MCP2_PIN_HAPTIC_MOTOR)    | \
+    (1 << MCP2_PIN_GUN_TRIGGER)      | \
+    (1 << MCP2_PIN_ACCESSORY_4)      | \
+    (0 << MCP2_PIN_CD4053B_S3)       | \
+    (0 << MCP2_PIN_CD4053B_S2)       | \
+    (0 << MCP2_PIN_CD4053B_S1)       | \
+    (0 << MCP2_PIN_ETH_LED_1)        | \
+    (0 << MCP2_PIN_ETH_LED_2)          \
+)
+#define MCP23008_2_DEFAULT_GPPU ( \
+    (0 << MCP2_PIN_HAPTIC_MOTOR)    | \
+    (1 << MCP2_PIN_GUN_TRIGGER) | \
+    (1 << MCP2_PIN_ACCESSORY_4)      | \
+    (0 << MCP2_PIN_CD4053B_S1)       | \
+    (0 << MCP2_PIN_CD4053B_S2)       | \
+    (0 << MCP2_PIN_CD4053B_S3)       | \
+    (0 << MCP2_PIN_ETH_LED_1)        | \
+    (0 << MCP2_PIN_ETH_LED_2)          \
 )
 
 typedef enum {
@@ -61,16 +66,38 @@ typedef enum {
 } MCP23008_NamedPin;
 
 typedef enum {
+    MCP2_PIN_HAPTIC_MOTOR    = 0, // GPIO Pin 0
+    MCP2_PIN_GUN_TRIGGER  = 1, // GPIO Pin 1
+    MCP2_PIN_ACCESSORY_4  = 2, // GPIO Pin 2
+    MCP2_PIN_CD4053B_S3 = 3, // GPIO Pin 3
+    MCP2_PIN_CD4053B_S2 = 4, // GPIO Pin 4
+    MCP2_PIN_CD4053B_S1   = 5, // GPIO Pin 5
+    MCP2_PIN_ETH_LED_1   = 6, // GPIO Pin 6
+    MCP2_PIN_ETH_LED_2  = 7  // GPIO Pin 7
+} MCP23008_2_NamedPin;
+
+typedef enum {
     MCP_PIN_DIR_OUTPUT = 0,
     MCP_PIN_DIR_INPUT  = 1
 } MCP23008_PinDirection;
 
 /**
- * @brief Initializes the MCP23008 device and configures pin directions and pull-ups.
+ * @brief Initializes the MCP23008 device and configures pin directions and pull-ups with custom defaults.
  *
  * This function first calls the underlying mcp23008_init(), then sets the IODIR (directions)
- * and GPPU (pull-ups) registers to the default values defined by
- * MCP23008_DEFAULT_IODIR and MCP23008_DEFAULT_GPPU.
+ * and GPPU (pull-ups) registers to the provided values.
+ *
+ * @param mcp Pointer to the MCP23008 device structure.
+ * @param iodir The IODIR register value (direction defaults).
+ * @param gppu The GPPU register value (pull-up defaults).
+ * @return ESP_OK on success, or an error code on failure.
+ */
+esp_err_t mcp23008_wrapper_init_with_defaults(mcp23008_t *mcp, uint8_t iodir, uint8_t gppu);
+
+/**
+ * @brief Initializes the MCP23008 device and configures pin directions and pull-ups (main defaults).
+ *
+ * This is a wrapper for mcp23008_wrapper_init_with_defaults using MCP23008_DEFAULT_IODIR and MCP23008_DEFAULT_GPPU.
  *
  * @param mcp Pointer to the MCP23008 device structure.
  * @return ESP_OK on success, or an error code on failure.
@@ -126,6 +153,13 @@ esp_err_t mcp23008_wrapper_read_pin(mcp23008_t *mcp, MCP23008_NamedPin pin, bool
  * @return ESP_OK on success, or an error code on failure.
  */
 esp_err_t mcp23008_wrapper_toggle_pin(mcp23008_t *mcp, MCP23008_NamedPin pin);
+
+/**
+ * @brief Checks if an MCP23008 device is present on the I2C bus.
+ * @param mcp Pointer to the MCP23008 device struct.
+ * @return ESP_OK if present, error code otherwise.
+ */
+esp_err_t mcp23008_check_present(mcp23008_t *mcp);
 
 #ifdef __cplusplus
 }

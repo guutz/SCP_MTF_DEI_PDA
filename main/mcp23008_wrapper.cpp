@@ -5,7 +5,7 @@
 
 static const char *TAG_WRAPPER = "mcp23008_wrapper";
 
-esp_err_t mcp23008_wrapper_init(mcp23008_t *mcp) {
+esp_err_t mcp23008_wrapper_init_with_defaults(mcp23008_t *mcp, uint8_t iodir, uint8_t gppu) {
     if (!mcp) {
         ESP_LOGE(TAG_WRAPPER, "MCP23008 device pointer is NULL in init");
         return ESP_ERR_INVALID_ARG;
@@ -17,22 +17,26 @@ esp_err_t mcp23008_wrapper_init(mcp23008_t *mcp) {
         return ret;
     }
 
-    // Set initial pin directions using the defaults from the header
-    ret = mcp23008_set_port_direction(mcp, MCP23008_DEFAULT_IODIR);
+    // Set initial pin directions
+    ret = mcp23008_set_port_direction(mcp, iodir);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG_WRAPPER, "Failed to set default IODIR (0x%X)", ret);
+        ESP_LOGE(TAG_WRAPPER, "Failed to set IODIR (0x%X)", ret);
         return ret;
     }
 
-    // Set initial pull-ups using the defaults from the header
-    ret = mcp23008_set_pullups(mcp, MCP23008_DEFAULT_GPPU);
+    // Set initial pull-ups
+    ret = mcp23008_set_pullups(mcp, gppu);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG_WRAPPER, "Failed to set default GPPU (0x%X)", ret);
+        ESP_LOGE(TAG_WRAPPER, "Failed to set GPPU (0x%X)", ret);
         return ret;
     }
 
-    ESP_LOGI(TAG_WRAPPER, "MCP23008 wrapper initialized with default settings. IODIR: 0x%02X, GPPU: 0x%02X", MCP23008_DEFAULT_IODIR, MCP23008_DEFAULT_GPPU);
+    ESP_LOGI(TAG_WRAPPER, "MCP23008 wrapper initialized with custom settings. IODIR: 0x%02X, GPPU: 0x%02X", iodir, gppu);
     return ESP_OK;
+}
+
+esp_err_t mcp23008_wrapper_init(mcp23008_t *mcp) {
+    return mcp23008_wrapper_init_with_defaults(mcp, MCP23008_DEFAULT_IODIR, MCP23008_DEFAULT_GPPU);
 }
 
 esp_err_t mcp23008_wrapper_set_pin_direction(mcp23008_t *mcp, MCP23008_NamedPin pin, MCP23008_PinDirection direction) {
@@ -128,5 +132,12 @@ esp_err_t mcp23008_wrapper_toggle_pin(mcp23008_t *mcp, MCP23008_NamedPin pin) {
     if (ret != ESP_OK) {
         ESP_LOGE(TAG_WRAPPER, "Failed to toggle pin %d (0x%X)", pin, ret);
     }
+    return ret;
+}
+
+esp_err_t mcp23008_check_present(mcp23008_t *mcp) {
+    if (!mcp) return ESP_ERR_INVALID_ARG;
+    uint8_t iodir = 0;
+    esp_err_t ret = mcp23008_get_port_direction(mcp, &iodir);
     return ret;
 }

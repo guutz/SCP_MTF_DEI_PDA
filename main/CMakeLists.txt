@@ -18,5 +18,6 @@ idf_component_register(
     "joystick.cpp"
     "telescope_controller.cpp"
     "menu_functions.cpp"
+    "laser_tag.cpp"
     INCLUDE_DIRS "."
 )
