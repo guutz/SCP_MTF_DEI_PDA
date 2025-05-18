@@ -13,7 +13,6 @@ idf_component_register(
     "main.cpp"
     "setup.cpp"
     "ota_manager.cpp"
-    "mcp23008_wrapper.cpp"
     "cd4053b_wrapper.cpp"
     "joystick.cpp"
     "telescope_controller.cpp"

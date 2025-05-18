@@ -27,6 +27,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "esp_pm.h"
 
 // LVGL Headers
 #include "lvgl.h"

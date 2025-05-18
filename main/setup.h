@@ -9,8 +9,6 @@
 #include "freertos/semphr.h"
 #include "lvgl.h"
 
-#include "xasin/BatteryManager.h"
-#include <xasin/neocontroller.h>
 #include "xasin/mqtt/Handler.h"
 
 #define LV_TICK_PERIOD_MS 1
