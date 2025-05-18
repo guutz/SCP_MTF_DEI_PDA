@@ -1,5 +1,6 @@
 #include "menu_functions.h"
 #include "ota_manager.h"
+#include <functional>
 
 #define TAG_MENU_FUNC "menu_func"
 
@@ -15,7 +16,7 @@ static bool modal_open = false;
 
 void register_menu_functions(void) {
     // Register the menu functions with the predefined function list
-    // G_PredefinedFunctions["OTA_UPDATE"] = trigger_ota_update_from_menu;
+    G_PredefinedFunctions["OTA_UPDATE"] = trigger_ota_update_from_menu;
     G_PredefinedFunctions["TOGGLE_WIFI"] = toggle_wifi_from_menu;
     G_PredefinedFunctions["SHOW_WIFI_STATUS"] = show_wifi_status_from_menu;
     G_PredefinedFunctions["PLAY_SOUND"] = play_audio_file_in_background;
@@ -388,4 +389,38 @@ static void blink_mcp_led(MCP23008_NamedPin pin, uint32_t duration_ms) {
         lv_task_del(task);
     }, duration_ms, LV_TASK_PRIO_LOW, (void*)(uintptr_t)pin);
     lv_task_once(led_task);
+}
+
+void trigger_ota_update_from_menu(void) {
+    ESP_LOGI(TAG_MENU_FUNC, "OTA update triggered from menu");
+    static lv_obj_t* ota_label = nullptr;
+    // Custom close callback to mark label as invalid
+    auto ota_close_cb = [](lv_obj_t *obj, lv_event_t event) {
+        if (event == LV_EVENT_CLICKED) {
+            ota_label = nullptr;
+            close_modal_from_child(obj);
+        }
+    };
+    ModalDialogParts dialog = create_modal_dialog(
+        "OTA UPDATE",
+        "Starting OTA update...\nPlease wait.",
+        "CLOSE",
+        ota_close_cb,
+        nullptr, nullptr, nullptr, nullptr
+    );
+    ota_label = dialog.msg;
+    // Lambda checks if label is still valid
+    auto update_label = [](const char* msg) {
+        if (ota_label) {
+            lv_label_set_text(ota_label, msg);
+            lv_obj_align(ota_label, NULL, LV_ALIGN_CENTER, 0, 0);
+        }
+    };
+    static OtaManager* ota_mgr = nullptr;
+    // Do not delete ota_mgr here; let the OTA task delete itself!
+    ota_mgr = new OtaManager(update_label);
+    ota_mgr->start_update();
+    // Add joystick group support for close button
+    lv_group_t* joy_group = lvgl_joystick_get_group();
+    lv_group_add_obj(joy_group, dialog.btn1);
 }

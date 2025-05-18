@@ -45,162 +45,108 @@ bool ota_manager_get_github_token(char *out_token, size_t max_len) {
     return false;
 }
 
-// OTA Event Handler
-static void ghota_event_callback(void* handler_args, esp_event_base_t base, int32_t id, void* event_data) {
-    ESP_LOGI(TAG_OTA, "OTA Event: %s", ghota_get_event_str((ghota_event_e)id));
-    ghota_client_handle_t *client = (ghota_client_handle_t *)handler_args;
+OtaManager::OtaManager(const ProgressCallback& cb)
+    : progress_cb_(cb) {}
 
+OtaManager::~OtaManager() {
+    if (ghota_client_) {
+        ghota_free(ghota_client_);
+        ghota_client_ = nullptr;
+    }
+    if (ota_task_handle_) {
+        vTaskDelete(ota_task_handle_);
+        ota_task_handle_ = nullptr;
+    }
+}
+
+void OtaManager::start_update() {
+    if (!ota_task_handle_) {
+        xTaskCreate(&OtaManager::ota_task, "ota_task", 10240, this, 5, &ota_task_handle_);
+    }
+}
+
+void OtaManager::ota_task(void* pvParameter) {
+    static_cast<OtaManager*>(pvParameter)->run_ota_task();
+}
+
+void OtaManager::run_ota_task() {
+    ghota_config_t ghconfig;
+    memset(&ghconfig, 0, sizeof(ghota_config_t));
+    strncpy(ghconfig.filenamematch, GITHUB_FILENAME, sizeof(ghconfig.filenamematch) - 1);
+    ghconfig.filenamematch[sizeof(ghconfig.filenamematch) - 1] = '\0';
+    ghconfig.orgname = (char*)GITHUB_USER;
+    ghconfig.reponame = (char*)GITHUB_REPO;
+    ghconfig.updateInterval = 0;
+    ghota_client_ = ghota_init(&ghconfig);
+    if (!ghota_client_) {
+        if (progress_cb_) progress_cb_("OTA client init failed");
+        vTaskDelete(nullptr);
+        return;
+    }
+    esp_event_handler_register(GHOTA_EVENTS, ESP_EVENT_ANY_ID, &OtaManager::ghota_event_callback, this);
+    char github_token[128] = {0};
+    if (ota_manager_get_github_token(github_token, sizeof(github_token))) {
+        ghota_set_auth(ghota_client_, GITHUB_USER, github_token);
+    }
+    esp_err_t check_result = ghota_check(ghota_client_);
+    if (check_result == ESP_OK) {
+        semver_t *current_v = ghota_get_current_version(ghota_client_);
+        semver_t *latest_v = ghota_get_latest_version(ghota_client_);
+        if (current_v && latest_v) {
+            if (semver_gt(*latest_v, *current_v)) {
+                if (progress_cb_) progress_cb_("Update available. Starting update...");
+                ghota_update(ghota_client_);
+            } else {
+                char msg[96];
+                snprintf(msg, sizeof(msg), "Firmware is already up to date.\nCurrent: %d.%d.%d, Latest: %d.%d.%d",
+                    current_v->major, current_v->minor, current_v->patch,
+                    latest_v->major, latest_v->minor, latest_v->patch);
+                if (progress_cb_) progress_cb_(msg);
+                esp_event_post(GHOTA_EVENTS, GHOTA_EVENT_NOUPDATE_AVAILABLE, NULL, 0, portMAX_DELAY);
+            }
+        } else {
+            if (progress_cb_) progress_cb_("Could not determine firmware version.");
+        }
+        if (current_v) semver_free(current_v);
+        if (latest_v) semver_free(latest_v);
+    } else {
+        if (progress_cb_) progress_cb_("OTA check failed");
+    }
+    esp_event_handler_unregister(GHOTA_EVENTS, ESP_EVENT_ANY_ID, &OtaManager::ghota_event_callback);
+    vTaskDelete(nullptr);
+    delete this;
+}
+
+void OtaManager::ghota_event_callback(void* handler_args, esp_event_base_t, int32_t id, void* event_data) {
+    auto* self = static_cast<OtaManager*>(handler_args);
+    if (self) self->handle_event(id, event_data);
+}
+
+void OtaManager::handle_event(int32_t id, void* event_data) {
     char buf[128];
     switch (id) {
         case GHOTA_EVENT_FINISH_UPDATE:
             snprintf(buf, sizeof(buf), "OTA Update Finished! Rebooting...");
-            ESP_LOGI(TAG_OTA, "OTA Update Finished successfully. Rebooting device.");
-            vTaskDelay(1000 / portTICK_PERIOD_MS); // Give UI time to update
+            if (progress_cb_) progress_cb_(buf);
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
             esp_restart();
             break;
         case GHOTA_EVENT_UPDATE_FAILED:
             snprintf(buf, sizeof(buf), "OTA Update Failed.");
-            ESP_LOGE(TAG_OTA, "OTA Update Failed.");
+            if (progress_cb_) progress_cb_(buf);
             break;
         case GHOTA_EVENT_NOUPDATE_AVAILABLE:
             snprintf(buf, sizeof(buf), "No update available.\nFirmware is up to date.");
-            ESP_LOGI(TAG_OTA, "No update available or firmware is already up to date.");
+            if (progress_cb_) progress_cb_(buf);
             break;
         case GHOTA_EVENT_FIRMWARE_UPDATE_PROGRESS:
             if (event_data) {
                 int progress = *((int*)event_data);
                 snprintf(buf, sizeof(buf), "Downloading update... %d%%", progress);
-                ESP_LOGI(TAG_OTA, "Firmware Update Progress: %d%%", progress);
+                if (progress_cb_) progress_cb_(buf);
             }
             break;
         default:
             break;
     }
-}
-
-// OTA Task
-static void ota_task(void *pvParameter) {
-    ESP_LOGI(TAG_OTA, "Starting OTA task...");
-
-    const esp_app_desc_t *current_app_info = esp_ota_get_app_description();
-    ESP_LOGI(TAG_OTA, "Current firmware version from app_desc: %s", current_app_info->version);
-
-    ghota_config_t ghconfig;
-    memset(&ghconfig, 0, sizeof(ghota_config_t)); // Initialize the struct to zeros/NULLs
-
-    // Populate the char arrays
-    // Ensure GITHUB_FILENAME length does not exceed CONFIG_MAX_FILENAME_LEN - 1
-    strncpy(ghconfig.filenamematch, GITHUB_FILENAME, sizeof(ghconfig.filenamematch) - 1);
-    ghconfig.filenamematch[sizeof(ghconfig.filenamematch) - 1] = '\\0';
-
-    ghconfig.orgname = (char*)GITHUB_USER; // GITHUB_USER is a #define string literal
-    ghconfig.reponame = (char*)GITHUB_REPO; // GITHUB_REPO is a #define string literal
-    ghconfig.updateInterval = 0;      
-
-    ghota_client_handle_t *ghota_client = ghota_init(&ghconfig);
-
-    if (ghota_client == NULL) {
-        ESP_LOGE(TAG_OTA, "ghota_client_init failed. Check Kconfig for GHOTA if defaults are used, or config struct.");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    // Register event handler to get progress and status updates
-    // Pass ghota_client as handler_args so callback can access it if needed, though not strictly necessary for basic reboot.
-    if (esp_event_handler_register(GHOTA_EVENTS, ESP_EVENT_ANY_ID, &ghota_event_callback, ghota_client) != ESP_OK) {
-        ESP_LOGE(TAG_OTA, "Failed to register OTA event handler.");
-        ghota_free(ghota_client);
-        vTaskDelete(NULL);
-        return;
-    }
-    
-    // For private repositories, you would set authentication:
-    // const char* github_token = "YOUR_GITHUB_PAT_TOKEN"; // Store securely!
-    // if (github_token && strlen(github_token) > 0) {
-    //    if (ghota_set_auth(ghota_client, GITHUB_USER, github_token) != ESP_OK) {
-    //        ESP_LOGW(TAG_OTA, "Failed to set ghota authentication.");
-    //    }
-    // }
-
-    // After ghota_client is initialized, before ghota_check:
-    char github_token[128] = {0};
-    if (ota_manager_get_github_token(github_token, sizeof(github_token))) {
-        if (ghota_set_auth(ghota_client, GITHUB_USER, github_token) != ESP_OK) {
-            ESP_LOGW(TAG_OTA, "Failed to set ghota authentication.");
-        } else {
-            ESP_LOGI(TAG_OTA, "Loaded GitHub token from NVS and set for ghota.");
-        }
-    } else {
-        ESP_LOGI(TAG_OTA, "No GitHub token found in NVS, proceeding without auth.");
-    }
-
-    ESP_LOGI(TAG_OTA, "Checking for firmware updates from %s/%s, asset: %s", 
-             ghconfig.orgname, ghconfig.reponame, ghconfig.filenamematch);
-
-    esp_err_t check_result = ghota_check(ghota_client);
-
-    if (check_result == ESP_OK) {
-        ESP_LOGI(TAG_OTA, "ghota_check indicates an update might be available.");
-        
-        semver_t *current_v = ghota_get_current_version(ghota_client); // Gets version from app_desc via ghota
-        semver_t *latest_v = ghota_get_latest_version(ghota_client);   // Gets version from GitHub release
-
-        if (current_v) {
-            ESP_LOGI(TAG_OTA, "Parsed current version: %d.%d.%d", current_v->major, current_v->minor, current_v->patch);
-        } else {
-            ESP_LOGE(TAG_OTA, "Failed to parse current firmware version via ghota.");
-        }
-
-        if (latest_v) {
-            ESP_LOGI(TAG_OTA, "Parsed latest GitHub version: %d.%d.%d", latest_v->major, latest_v->minor, latest_v->patch);
-        } else {
-            ESP_LOGE(TAG_OTA, "Failed to parse latest GitHub version via ghota.");
-        }
-
-        if (current_v && latest_v) {
-            if (semver_gt(*latest_v, *current_v)) {
-                ESP_LOGI(TAG_OTA, "Newer version found on GitHub. Starting update process...");
-                esp_err_t update_result = ghota_update(ghota_client);
-                // If ghota_update is successful, it usually triggers a reboot.
-                // The GHOTA_EVENT_FINISH_UPDATE in the callback will handle the reboot.
-                // If it returns, it means an error occurred or reboot is deferred.
-                if (update_result != ESP_OK) {
-                    ESP_LOGE(TAG_OTA, "ghota_update failed with error: 0x%x (%s)", update_result, esp_err_to_name(update_result));
-                } else {
-                    ESP_LOGI(TAG_OTA, "ghota_update call returned ESP_OK. Reboot should be handled by event callback.");
-                }
-            } else {
-                ESP_LOGI(TAG_OTA, "Current firmware is up to date or newer. No update performed.");
-                // Post NOUPDATE_AVAILABLE if not already posted by ghota_check implicitly
-                 esp_event_post(GHOTA_EVENTS, GHOTA_EVENT_NOUPDATE_AVAILABLE, NULL, 0, portMAX_DELAY);
-            }
-        } else {
-            ESP_LOGE(TAG_OTA, "Could not compare versions. One or both versions are unavailable.");
-        }
-
-        if (current_v) semver_free(current_v);
-        if (latest_v) semver_free(latest_v);
-
-    } else if (check_result == ESP_FAIL) { 
-        // ESP_FAIL from ghota_check often means no update is available or a non-critical error.
-        // The GHOTA_EVENT_NOUPDATE_AVAILABLE event should have been posted by ghota_check.
-        ESP_LOGI(TAG_OTA, "ghota_check reported ESP_FAIL. Likely no update available or minor issue. Check logs from ghota library.");
-    } else {
-        ESP_LOGE(TAG_OTA, "ghota_check failed with error: 0x%x (%s)", check_result, esp_err_to_name(check_result));
-    }
-    
-    // Cleanup: Unregister event handler and free client
-    // This part will only be reached if the update didn't happen, failed before reboot, or if no update was needed.
-    esp_event_handler_unregister(GHOTA_EVENTS, ESP_EVENT_ANY_ID, &ghota_event_callback);
-    ghota_free(ghota_client);
-    
-    ESP_LOGI(TAG_OTA, "OTA task finished processing.");
-    vTaskDelete(NULL);
-}
-
-void trigger_ota_update() {
-    ESP_LOGI(TAG_OTA, "OTA update triggered. Creating ota_task.");
-    // Stack size for OTA can be significant due to HTTPS and JSON parsing.
-    // 8192 might be okay, but monitor for stack overflows. 10240 or 12288 could be safer.
-    xTaskCreate(&ota_task, "ota_task", 10240, NULL, 5, NULL); 
 }
