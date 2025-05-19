@@ -36,8 +36,9 @@ extern const char *mqtt_tag;
 typedef esp_mqtt_client_config_t mqtt_cfg;
 
 struct MQTT_Packet {
-	const std::string &topic;
+	const std::string &topic; // This will hold the topic suffix/rest after matching
 	const std::string &data;
+	std::string full_topic; // This will hold the original full topic string from the broker
 };
 typedef std::function<void (const MQTT_Packet)> mqtt_callback;
 
@@ -90,7 +91,7 @@ public:
 
 	Subscription * subscribe_to(std::string topic, mqtt_callback callback, int qos = 1);
 
-	uint8_t is_disconnected();
+	uint8_t is_disconnected() const;
 };
 
 } /* namespace MQTT */

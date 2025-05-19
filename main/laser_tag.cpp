@@ -2,11 +2,13 @@
 #include "cd4053b_wrapper.h"
 #include "esp_log.h"
 #include "mcp23008_wrapper.h"
+#include "xasin/audio.h"
 #include "lzrtag/player.h"
 #include "lzrtag/weapon/handler.h"
 #include "lzrtag/weapon/shot_weapon.h"
 #include "lzrtag/weapon/heavy_weapon.h"
 #include "lzrtag/weapon/beam_weapon.h"
+#include "lzrtag/weapon_defs.h"
 #include "xasin/mqtt/Handler.h"
 #include "lzrtag/mcp_access.h"
 #include <cstring>
@@ -19,6 +21,8 @@ mcp23008_t gun_gpio_extender = {
 };
 
 static const char *TAG_LASER = "laser_tag";
+
+Xasin::Audio::TX  audioManager;
 
 void gun_mux_switch_init(void) {
     if (mcp23008_check_present(&gun_gpio_extender) == ESP_OK) {
@@ -65,7 +69,7 @@ bool laser_tag_mode_enter(void) {
     // --- Game logic setup ---
     LaserTagGame::mqtt = new Xasin::MQTT::Handler();
     LaserTagGame::player = new LZR::Player("", *LaserTagGame::mqtt);
-    LaserTagGame::weaponHandler = new LZRTag::Weapon::Handler();
+    LaserTagGame::weaponHandler = new LZRTag::Weapon::Handler(audioManager);
     LaserTagGame::weapons.push_back(new LZRTag::Weapon::ShotWeapon(*LaserTagGame::weaponHandler, colibri_config));
     LaserTagGame::weapons.push_back(new LZRTag::Weapon::ShotWeapon(*LaserTagGame::weaponHandler, whip_config));
     LaserTagGame::weapons.push_back(new LZRTag::Weapon::ShotWeapon(*LaserTagGame::weaponHandler, steelfinger_config));

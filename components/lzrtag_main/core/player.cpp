@@ -11,6 +11,7 @@
 #include "esp_log.h"
 
 #include "lzrtag/animatorThread.h"
+#include "lzrtag/colorSets.h"
 
 #include <cJSON.h>
 

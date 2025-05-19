@@ -4,8 +4,6 @@
 #include "lvgl.h"
 #include "menu_structures.h" // For MenuScreenDefinition, G_MenuScreens etc.
 
-extern volatile bool g_wifi_intentional_stop;
-
 // Define a function pointer type for functions that create screens.
 // These creator functions will typically use global state (like G_TargetMenuNameForCreation)
 // set prior to their invocation.

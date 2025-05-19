@@ -1,5 +1,3 @@
-
-
 #ifndef __LZRTAG_WEAPON_BASE_H__
 #define __LZRTAG_WEAPON_BASE_H__
 
@@ -61,6 +59,8 @@ public:
     virtual void tempt_reload();
 
     virtual void apply_vibration(float &vibr);
+
+    virtual ~BaseWeapon(); // Added virtual destructor
 };
 
 }

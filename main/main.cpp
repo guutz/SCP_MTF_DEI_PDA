@@ -11,6 +11,7 @@
 
 #include "ui_manager.h"
 #include "laser_tag.h"
+#include "EspMeshHandler.h"
 
 // C Standard Library
 #include <stdbool.h>
@@ -73,9 +74,8 @@ static void lvglTask(void *pvParameter);
 static void wifi_init_task(void *pvParameter); 
 static void initTask(void *pvParameter);
 static void peripheralsTask(void *pvParameter);
-esp_err_t event_handler(void *context, system_event_t *event);
-volatile bool g_wifi_intentional_stop = false;
 SemaphoreHandle_t xGuiSemaphore;
+static Xasin::Communication::EspMeshHandler g_mesh_handler; // Global instance for ESP-MESH handler
 
 mcp23008_t main_gpio_extender = {
     .port = I2C_NUM_0,
@@ -87,8 +87,8 @@ mcp23008_t main_gpio_extender = {
 extern "C" void app_main(void) {
     nvs_flash_init();
 
-    tcpip_adapter_init();
-    esp_event_loop_init(event_handler, 0);
+    // tcpip_adapter_init(); // Removed: Handled by EspMeshHandler or underlying ESP-IDF mesh init
+    // esp_event_loop_init(event_handler, 0); // Removed: Event handling is part of EspMeshHandler
 
     ESP_LOGI(TAG_MAIN, "Creating Init Task.");
     xTaskCreatePinnedToCore(initTask, "init", 4096, NULL, 10, NULL, 0);
@@ -135,8 +135,8 @@ static void initTask(void *pvParameter) {
     lv_task_t* ui_init_task = lv_task_create(ui_init, 500, LV_TASK_PRIO_MID, NULL);
     lv_task_once(ui_init_task);
 
-    ESP_LOGI(TAG_MAIN, "[InitTask] Starting Wi-Fi, peripherals, and GUI tasks.");
-    xTaskCreatePinnedToCore(wifi_init_task, "wifi_init", 4096, NULL, 5, NULL, 0);
+    ESP_LOGI(TAG_MAIN, "[InitTask] Starting Wi-Fi/Mesh, peripherals, and GUI tasks.");
+    xTaskCreatePinnedToCore(wifi_init_task, "wifi_init", 4096*2, NULL, 5, NULL, 0); // Increased stack for mesh
     // xTaskCreatePinnedToCore(peripheralsTask, "peripherals", 1024 * 2, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 8, NULL, 5, NULL, 1);
 
@@ -147,14 +147,18 @@ static void initTask(void *pvParameter) {
 
 static void wifi_init_task(void *pvParameter) {
     (void)pvParameter;
-    ESP_LOGI(TAG_MAIN, "Wi-Fi init task started, waiting for 3 seconds...");
+    ESP_LOGI(TAG_MAIN, "Wi-Fi/Mesh init task started, waiting for 3 seconds...");
     vTaskDelay(pdMS_TO_TICKS(3000)); // Wait for 3 seconds
 
-    ESP_LOGI(TAG_MAIN, "Initializing Wi-Fi...");
-    // XNM::NetHelpers::init_global_r3_ca(); 
-    Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
+    ESP_LOGI(TAG_MAIN, "Initializing ESP-MESH and Wi-Fi...");
+    // XNM::NetHelpers::init_global_r3_ca(); // This might be needed if your MQTT handler relies on it for certificates
+    // Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD); // Removed: Old Wi-Fi start
+    
+    // WIFI_STATION_SSID and WIFI_STATION_PASSWD should be defined in "setup.h" or another config file
+    g_mesh_handler.initialize_mesh_and_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
+    g_mesh_handler.start();
 
-    ESP_LOGI(TAG_MAIN, "Wi-Fi init task finished, deleting self.");
+    ESP_LOGI(TAG_MAIN, "Wi-Fi/Mesh init task finished, deleting self.");
     vTaskDelete(NULL);
 }
 
@@ -202,24 +206,4 @@ static void lvglTask(void *pvParameter) {
         }
     }
     vTaskDelete(NULL);
-}
-
-esp_err_t event_handler(void *context, system_event_t *event) {
-    // If Wi-Fi was stopped intentionally, don't try to reconnect on disconnect event
-    if (event->event_id == SYSTEM_EVENT_STA_DISCONNECTED && g_wifi_intentional_stop) {
-        ESP_LOGI(TAG_MAIN, "Wi-Fi intentionally disconnected, skipping reconnect attempt.");
-    } else {
-        Xasin::MQTT::Handler::try_wifi_reconnect(event);
-    }
-
-	// mqtt.wifi_handler(event);
-    // Example: Listen for MQTT messages to trigger OTA
-    // This is a simplified example. You'd integrate this with your Xasin::MQTT::Handler
-    // and parse the message topic/payload appropriately.
-    // For instance, in your MQTT message callback:
-    // if (strcmp(topic, "yourdevice/ota/update") == 0) {
-    //     trigger_ota_update();
-    // }
-
-	return ESP_OK;
 }

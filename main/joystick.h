@@ -15,23 +15,14 @@ extern "C" {
 #define ADC_ATTENUATION ADC_ATTEN_DB_11
 #define ADC_WIDTH       ADC_WIDTH_BIT_12
 
-// Define this macro in your build system or here to use ADC1 for Joystick Y-axis
-#define USE_ADC1_FOR_JOYSTICK_Y
-
 // Joystick ADC Channels
 // GPIO32 is ADC1_CHANNEL_4
 #define JOYSTICK_AXIS1_ADC_UNIT    ADC_UNIT_1
 #define JOYSTICK_AXIS1_ADC_CHANNEL ADC1_CHANNEL_4 // Connected via CD4053B S1 (Y0) to GPIO32
 
-#ifdef USE_ADC1_FOR_JOYSTICK_Y
 // GPIO34 is ADC1_CHANNEL_6
 #define JOYSTICK_AXIS2_ADC_UNIT    ADC_UNIT_1
 #define JOYSTICK_AXIS2_ADC_CHANNEL ADC1_CHANNEL_6 // Connected via CD4053B S3 (Y2) to GPIO34
-#else
-// GPIO25 is ADC2_CHANNEL_8
-#define JOYSTICK_AXIS2_ADC_UNIT    ADC_UNIT_2
-#define JOYSTICK_AXIS2_ADC_CHANNEL ADC2_CHANNEL_8 // Connected via CD4053B S3 (Y2) to GPIO25
-#endif
 
 // Battery Sense ADC Channel (shares S1 common pin with Joystick Axis 1)
 #define BATTERY_SENSE_ADC_UNIT   ADC_UNIT_1

@@ -17,7 +17,6 @@ static bool modal_open = false;
 void register_menu_functions(void) {
     // Register the menu functions with the predefined function list
     G_PredefinedFunctions["OTA_UPDATE"] = trigger_ota_update_from_menu;
-    G_PredefinedFunctions["TOGGLE_WIFI"] = toggle_wifi_from_menu;
     G_PredefinedFunctions["SHOW_WIFI_STATUS"] = show_wifi_status_from_menu;
     G_PredefinedFunctions["PLAY_SOUND"] = play_audio_file_in_background;
     G_PredefinedFunctions["TELESCOPE_CONTROL"] = open_telescope_control_modal;
@@ -34,90 +33,6 @@ void handle_focus_change(lv_obj_t *obj, lv_event_t event) {
             lv_group_focus_prev((lv_group_t *)lv_obj_get_group(obj)); // Cast to lv_group_t*
         }
     }
-}
-
-void toggle_wifi_from_menu(void) {
-    ESP_LOGI(TAG_MENU_FUNC, "WiFi toggle triggered from menu");
-    wifi_mode_t current_mode;
-    esp_err_t err = esp_wifi_get_mode(&current_mode);
-    bool wifi_is_on = (err == ESP_OK && current_mode != WIFI_MODE_NULL);
-
-    // Button event handlers
-    auto yes_cb = [](lv_obj_t *obj, lv_event_t event) {
-        if (event == LV_EVENT_CLICKED) {
-            bool wifi_is_on = (bool)lv_obj_get_user_data(obj);
-            close_modal_from_child(obj);
-            lv_obj_t *status_msg = lv_label_create(lv_scr_act(), NULL);
-            if (wifi_is_on) {
-                lv_label_set_text(status_msg, "Turning WiFi OFF...");
-                lv_obj_add_style(status_msg, LV_OBJ_PART_MAIN, &style_default_label);
-                lv_obj_align(status_msg, NULL, LV_ALIGN_CENTER, 0, 0);
-                lv_task_t *wifi_task = lv_task_create([](lv_task_t *task) {
-                    g_wifi_intentional_stop = true;
-                    esp_err_t stop_err = esp_wifi_stop();
-                    lv_obj_t *msg = (lv_obj_t*)task->user_data;
-                    if (msg) {
-                        if (stop_err == ESP_OK) {
-                            lv_label_set_text(msg, "WiFi turned OFF");
-                        } else {
-                            lv_label_set_text(msg, "WiFi OFF failed!");
-                            ESP_LOGE(TAG_MENU_FUNC, "Failed to stop WiFi: %s", esp_err_to_name(stop_err));
-                        }
-                        lv_task_t *msg_task = lv_task_create([](lv_task_t *msg_task) {
-                            lv_obj_t *msg = (lv_obj_t*)msg_task->user_data;
-                            if (msg) {
-                                lv_obj_del(msg);
-                            }
-                            lv_task_del(msg_task);
-                        }, 2000, LV_TASK_PRIO_LOW, NULL);
-                        msg_task->user_data = msg;
-                        lv_task_once(msg_task);
-                    }
-                    lv_task_del(task);
-                }, 100, LV_TASK_PRIO_MID, NULL);
-                wifi_task->user_data = status_msg;
-                lv_task_once(wifi_task);
-            } else {
-                lv_label_set_text(status_msg, "Turning WiFi ON...");
-                lv_obj_add_style(status_msg, LV_OBJ_PART_MAIN, &style_default_label);
-                lv_obj_align(status_msg, NULL, LV_ALIGN_CENTER, 0, 0);
-                lv_task_t *wifi_task = lv_task_create([](lv_task_t *task) {
-                    g_wifi_intentional_stop = false;
-                    Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
-                    lv_obj_t *msg = (lv_obj_t*)task->user_data;
-                    if (msg) {
-                        lv_label_set_text(msg, "WiFi turned ON\nConnecting...");
-                        lv_task_t *msg_task = lv_task_create([](lv_task_t *msg_task) {
-                            lv_obj_t *msg = (lv_obj_t*)msg_task->user_data;
-                            if (msg) {
-                                lv_obj_del(msg);
-                            }
-                            lv_task_del(msg_task);
-                        }, 2000, LV_TASK_PRIO_LOW, NULL);
-                        msg_task->user_data = msg;
-                        lv_task_once(msg_task);
-                    }
-                    lv_task_del(task);
-                }, 100, LV_TASK_PRIO_MID, NULL);
-                wifi_task->user_data = status_msg;
-                lv_task_once(wifi_task);
-            }
-        } else {
-            handle_focus_change(obj, event);
-        }
-    };
-    auto no_cb = [](lv_obj_t *obj, lv_event_t event) {
-        if (event == LV_EVENT_CLICKED) {
-            close_modal_from_child(obj);
-        } else {
-            handle_focus_change(obj, event);
-        }
-    };
-    create_modal_dialog(
-        "WIFI CONTROL",
-        wifi_is_on ? "WiFi is currently ON\nDo you want to turn it OFF?" : "WiFi is currently OFF\nDo you want to turn it ON?",
-        "YES", yes_cb, "NO", no_cb, (void*)(wifi_is_on ? 1 : 0), nullptr
-    );
 }
 
 void show_wifi_status_from_menu(void) {
@@ -140,11 +55,7 @@ void show_wifi_status_from_menu(void) {
         esp_err_t err = esp_wifi_get_mode(&mode);
         char status_buf[256];
         if (err != ESP_OK || mode == WIFI_MODE_NULL) {
-            if (g_wifi_intentional_stop) {
-                snprintf(status_buf, sizeof(status_buf), "WiFi Status: OFF (INTENTIONAL)\n\nWiFi was manually disabled.\nUse 'Toggle WiFi' to enable.");
-            } else {
-                snprintf(status_buf, sizeof(status_buf), "WiFi Status: OFF\n\nWiFi is currently disabled.\nUse 'Toggle WiFi' to enable.");
-            }
+            snprintf(status_buf, sizeof(status_buf), "WiFi Status: OFF\n\nWiFi is currently disabled.");
         } else {
             wifi_ap_record_t ap_info;
             err = esp_wifi_sta_get_ap_info(&ap_info);

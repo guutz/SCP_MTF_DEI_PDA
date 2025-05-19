@@ -59,10 +59,6 @@ extern lv_style_t style_focused_button; // Style for focused buttons
 
 extern SemaphoreHandle_t xGuiSemaphore;
 
-// Global flag to track intentional WiFi disconnect
-extern volatile bool g_wifi_intentional_stop;
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif
