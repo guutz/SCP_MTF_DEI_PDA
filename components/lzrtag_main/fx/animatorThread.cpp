@@ -22,7 +22,7 @@
 
 #include "lzrtag/mcp_access.h"      // For lzrtag_get_trigger, lzrtag_set_vibrate_motor
 #include "lzrtag/colorSets.h" // For NUM_TEAM_COLORS and NUM_BRIGHTNESS_LEVELS
-#include "lzrtag/vibrationHandler.h" // For vibrator_tick()
+#include "lzrtag/vibrationHandler.h" // For VibrationHandler
 
 #include "driver/ledc.h"
 #include <cmath> // For sinf, powf, or C versions math.h
@@ -41,6 +41,9 @@
 
 namespace LZR {
 
+// Static VibrationHandler pointer for Animator
+static VibrationHandler* vibration_handler_ = nullptr;
+
 // Constructor
 Animator::Animator(
     LZR::Player* player_ptr,
@@ -58,8 +61,7 @@ Animator::Animator(
     mqtt_(mqtt_ptr),
     main_weapon_status_(main_weapon_status_ptr),
     animation_task_handle_(nullptr),
-    fx_target_mode_(OFF), // Default to OFF or some initial state
-    vibr_motor_count_old_(0)
+    fx_target_mode_(OFF) // Default to OFF or some initial state
 {
     // Initialize ColorSet and FXSet members (assuming teamColors and brightnessLevels are accessible)
     // If teamColors/brightnessLevels are not global/static, this needs adjustment
@@ -91,6 +93,10 @@ Animator::Animator(
     // Call internal setup methods
     setup_vest_patterns_internal();
 
+    // Instantiate VibrationHandler if not already
+    if (!vibration_handler_)
+        vibration_handler_ = new VibrationHandler(player_, weapon_handler_);
+
     ESP_LOGI("Animator", "Animator initialized");
 }
 
@@ -109,6 +115,12 @@ Animator::~Animator() {
     delete vest_marked_marker_;
     
     vest_patterns_.clear(); // Clear the vector of pointers
+
+    // Delete VibrationHandler if it exists
+    if (vibration_handler_) {
+        delete vibration_handler_;
+        vibration_handler_ = nullptr;
+    }
 
     ESP_LOGI("Animator", "Animator destroyed");
 }
@@ -291,33 +303,10 @@ void Animator::status_led_tick_internal() {
 }
 
 void Animator::vibr_motor_tick_internal() {
-    // Logic from old vibr_motor_tick()
-    // Use member variables: weapon_handler_, player_, vibr_motor_count_old_
-    if (!weapon_handler_ || !player_) return; // Guard
-
-    // vibrator_tick(); // Assuming this is a global or static function from vibrationHandler.h
-    // This function seems to be empty or not doing what's expected based on its name.
-    // The actual vibration logic is below.
-
-    // The old code had a 'return;' here, effectively disabling the rest.
-    // If that's intentional, keep it. Otherwise, remove to enable vibration.
-    // return; 
-
-    vibr_motor_count_old_++;
-    bool vibrOn = false;
-
-    if((xTaskGetTickCount() - weapon_handler_->get_last_shot_tick()) < pdMS_TO_TICKS(60))
-        vibrOn = true;
-    else if(player_->is_hit() && player_->is_dead())
-        vibrOn = (vibr_motor_count_old_ & 0b1);
-    else if(player_->is_hit())
-        vibrOn = (vibr_motor_count_old_ & 0b1010) == 0;
-    else if(player_->get_heartbeat())
-        vibrOn = ((0b101 & (xTaskGetTickCount()/75)) == 0);
-    else if(player_->should_vibrate())
-        vibrOn = true;
-
-    lzrtag_set_vibrate_motor(vibrOn);
+    // Use VibrationHandler for vibration logic only
+    if (vibration_handler_) {
+        vibration_handler_->vibrator_tick();
+    }
 }
 
 // Define COLOR_FADE and FX_FADE macros if they are simple enough,

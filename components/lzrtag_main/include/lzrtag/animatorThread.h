@@ -104,7 +104,6 @@ private:
 
     // Internal FX state
     volatile pattern_mode_t fx_target_mode_; 
-    TickType_t vibr_motor_count_old_; // State for vibr_motor_tick_internal
 };
 
 } /* namespace LZR */
