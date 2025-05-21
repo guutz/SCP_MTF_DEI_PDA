@@ -8,7 +8,6 @@ idf_component_register(
     "assets/lv_font_firacode_16.c"
     "ui_manager.cpp"
     "sd_manager.cpp"
-    "sd_raw_access.cpp"
     "audio_player.cpp"
     "main.cpp"
     "setup.cpp"

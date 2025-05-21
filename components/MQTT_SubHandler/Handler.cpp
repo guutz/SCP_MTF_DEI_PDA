@@ -7,11 +7,11 @@
 
 #include "xasin/mqtt/Handler.h"
 #include "xasin/mqtt/Subscription.h"
+#include "EspMeshHandler.h"
 
 #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 #include "esp_log.h"
 
-#include <xnm/net_helpers.h>
 
 namespace Xasin {
 namespace MQTT {
@@ -37,7 +37,7 @@ Handler::Handler()
 	base_topic 	= "/esp32/";
 	base_topic += CONFIG_PROJECT_NAME;
 	base_topic += "/";
-	base_topic += XNM::NetHelpers::get_device_id();
+	base_topic += Xasin::Communication::get_device_mac_string();
 	base_topic += "/";
 }
 Handler::Handler(const std::string &base_t) : Handler() {

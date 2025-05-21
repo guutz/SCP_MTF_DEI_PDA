@@ -31,8 +31,6 @@ extern Xasin::Communication::EspMeshHandler g_mesh_handler;
 
 static const char *TAG_LASER = "laser_tag";
 
-Xasin::Audio::TX  audioManager;
-
 mcp23008_t gun_gpio_extender = {
     .port = I2C_NUM_0,
     .address = 0x27, // Gun MCP23008 address
@@ -56,7 +54,6 @@ namespace LaserTagGame {
     LZRTag_CORE_WEAPON_STATUS main_weapon_status = LZRTag_WPN_STAT_INITIALIZING;
     Housekeeping::BatteryManager battery; // Default constructor
     Xasin::NeoController::NeoController* rgbController = nullptr;
-    TaskHandle_t audioProcessingTask = nullptr;
 
     // Forward declare internal helper for ping
     static void send_ping_req_internal();
@@ -93,32 +90,6 @@ static void housekeeping_thread(void* args) {
         
         // Original delay + any other game logic
         vTaskDelay(pdMS_TO_TICKS(100)); // Reduced delay to allow more frequent checks if needed, adjust as necessary
-    }
-}
-
-// Audio processing task (from setup.cpp core_processing_task)
-static void audio_core_processing_task(void *args) {
-	while(true) {
-		xTaskNotifyWait(0, 0, nullptr, portMAX_DELAY);
-		audioManager.largestack_process(); // Uses the global audioManager
-	}
-}
-
-void LaserTagGame::setup_audio_system() {
-    if (!audioProcessingTask) {
-        xTaskCreate(audio_core_processing_task, "AudioLargeStack", 32768, nullptr, 5, &audioProcessingTask);
-        audioManager.init(audioProcessingTask); // Initialize the global audioManager
-        audioManager.volume_mod = 160; // From setup_audio
-        ESP_LOGI(TAG_LASER, "Audio system initialized.");
-    }
-}
-
-void LaserTagGame::shutdown_audio_system() {
-    if (audioProcessingTask) {
-        vTaskDelete(audioProcessingTask);
-        audioProcessingTask = nullptr;
-        // audioManager.deinit(); // If an explicit deinit is available/needed
-        ESP_LOGI(TAG_LASER, "Audio system shutdown.");
     }
 }
 
@@ -247,7 +218,7 @@ bool laser_tag_mode_enter(void) {
     LaserTagGame::init(); // Sets up LaserTagGame::mqtt (g_mesh_handler) and player init task
 
     // Initialize systems
-    LaserTagGame::setup_audio_system();
+    // LaserTagGame::setup_audio_system(); // Audio system is now initialized in main.cpp
     LaserTagGame::setup_effects_system(); // Includes RGB and animator
     LaserTagGame::setup_ping_handling(); // Setup MQTT for pings
 
@@ -308,7 +279,7 @@ void laser_tag_mode_exit(void) {
         LaserTagGame::weaponHandler->shutdown_ir_system(); // Call new shutdown method
     }
     LaserTagGame::shutdown_effects_system(); // This will now delete the animator
-    LaserTagGame::shutdown_audio_system();
+    // LaserTagGame::shutdown_audio_system(); // Audio system is managed in main.cpp
 
     // Original cleanup
     delete LaserTagGame::player; LaserTagGame::player = nullptr;
@@ -355,10 +326,10 @@ void LaserTagGame::init() {
 
 // Call this from your animation loop or main tick
 void LaserTagGame::tick() {
-        if (patternModeHandler) {
-            patternModeHandler->tick();
-        }
-        if (animator) {
-            // Optionally, keep animator tick if needed
-        }
+    if (patternModeHandler) {
+        patternModeHandler->tick();
     }
+    if (animator) {
+        // Optionally, keep animator tick if needed
+    }
+}

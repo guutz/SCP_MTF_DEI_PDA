@@ -39,7 +39,7 @@ namespace Xasin {
 namespace Communication {
 
 // Helper to get MAC address as string
-static std::string get_device_mac_string() {
+std::string get_device_mac_string() {
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA); // Get STA MAC, usually base MAC
     std::stringstream ss;

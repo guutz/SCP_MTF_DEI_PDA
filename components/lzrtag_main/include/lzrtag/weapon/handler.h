@@ -15,7 +15,6 @@
 #include "CommHandler.h"           // For Xasin::Communication::CommHandler and CommReceivedData
 #include "lzrtag/player.h"         // For LZR::Player
 #include "cJSON.h"                 // For cJSON operations
-#include "xnm/net_helpers.h"       // For XNM::NetHelpers for device ID
 #include "lzrtag/LZRConfig.h"      // For PIN_IR_OUT, PIN_IR_IN
 
 namespace LZRTag {

@@ -4,6 +4,7 @@
 #include "esp_wifi.h" // Add this include for esp_wifi_* functions
 #include "menu_log.h"
 #include <functional>
+#include "xasin/audio/ByteCassette.h" // Added for Xasin Audio
 
 #define TAG_MENU_FUNC "menu_func"
 
@@ -189,12 +190,19 @@ static void ok_button_cb(lv_obj_t *obj, lv_event_t event) {
 // Custom predefined function to play an audio file in the background
 void play_audio_file_in_background(void) {
     const char* audio_file_path = "DEI/sounds/GameStart.raw"; // Replace with actual file path
-    ESP_LOGI(TAG_MENU_FUNC, "Playing audio file in the background: %s", audio_file_path);
+    ESP_LOGI(TAG_MENU_FUNC, "Playing audio file using Xasin::Audio: %s", audio_file_path);
 
-    esp_err_t result = audio_player_play_file(audio_file_path, 8000);
-    if (result != ESP_OK) {
-        ESP_LOGE(TAG_MENU_FUNC, "Failed to play audio file: %s", esp_err_to_name(result));
-    }
+    Xasin::Audio::bytecassette_data_t audio_data = {
+        .file_path = audio_file_path,
+        .data_samplerate = 8000,
+        .volume = 128 
+    };
+
+    // Assuming audioManager is globally accessible (e.g., externed in laser_tag.h or setup.h)
+    Xasin::Audio::ByteCassette::play(audioManager, audio_data);
+
+    // The Xasin::Audio::ByteCassette::play method is void, so direct error checking like before isn't possible here.
+    // Playback is handled by the audio manager; further error handling would be within that system or via callbacks if implemented.
 }
 
 void open_telescope_control_modal(void) {

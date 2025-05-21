@@ -2,6 +2,8 @@
 
 #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 #include "esp_log.h"
+#include "lzrtag/weapon/handler.h"
+#include "EspMeshHandler.h"
 
 namespace LZRTag {
 namespace Weapon {
@@ -355,7 +357,7 @@ void Handler::send_ir_hit_event(uint8_t pID, uint8_t arbCode) {
     }
 
     cJSON_AddNumberToObject(output, "shooterID", pID);
-    std::string device_id_str = XNM::NetHelpers::get_device_id(); // Get device ID as std::string
+    std::string device_id_str = Xasin::Communication::get_device_mac_string(); // Get device ID as std::string
     cJSON_AddStringToObject(output, "target", device_id_str.c_str()); // Use .c_str() for const char*
     cJSON_AddNumberToObject(output, "arbCode", arbCode);
 

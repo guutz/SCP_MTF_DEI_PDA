@@ -21,6 +21,8 @@
 
 #include <stdint.h>
 
+#define CONFIG_PROJECT_NAME "LZR"
+
 namespace Xasin {
 namespace MQTT {
 

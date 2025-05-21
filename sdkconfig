@@ -1288,15 +1288,6 @@ CONFIG_XASAUDIO_RX_FRAMELENGTH=20
 # end of XasCode Audio
 
 #
-# XNM NetHelpers
-#
-CONFIG_PROJECT_NAME="DEV_PROJECT"
-# CONFIG_AUTOSTART_OTA is not set
-# CONFIG_AUTOSTART_MQTT_LOG_REDIR is not set
-# CONFIG_AUTOCONFIG_DEVICE_NAME is not set
-# end of XNM NetHelpers
-
-#
 # Github OTA Configuration
 #
 CONFIG_MAX_FILENAME_LEN=64

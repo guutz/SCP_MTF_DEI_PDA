@@ -12,6 +12,8 @@
 #include "ui_manager.h"
 #include "laser_tag.h"
 #include "EspMeshHandler.h"
+#include "xasin/audio/AudioTX.h"
+#include "xasin/audio/ByteCassette.h" // For Xasin::Audio::TX
 
 // C Standard Library
 #include <stdbool.h>
@@ -71,8 +73,11 @@ static void lvglTask(void *pvParameter);
 static void wifi_init_task(void *pvParameter); 
 static void initTask(void *pvParameter);
 static void peripheralsTask(void *pvParameter);
+static void audio_core_processing_task(void *args); // Forward declaration for audio task
+
 SemaphoreHandle_t xGuiSemaphore;
 Xasin::Communication::EspMeshHandler g_mesh_handler;
+Xasin::Audio::TX audioManager; // Definition of the global audioManager
 
 mcp23008_t main_gpio_extender = {
     .port = I2C_NUM_0,
@@ -123,6 +128,13 @@ static void initTask(void *pvParameter) {
     ESP_LOGI(TAG_MAIN, "[InitTask] Initializing LVGL Joystick Input.");
     lvgl_joystick_input_init(&main_gpio_extender); // Add joystick LVGL init here
 
+    ESP_LOGI(TAG_MAIN, "[InitTask] Initializing Audio System.");
+    TaskHandle_t audioProcessingTaskHandle = nullptr; // Local handle for init
+    xTaskCreate(audio_core_processing_task, "AudioLargeStack", 32768, nullptr, 5, &audioProcessingTaskHandle);
+    audioManager.init(audioProcessingTaskHandle); 
+    audioManager.volume_mod = 160; 
+    ESP_LOGI(TAG_MAIN, "[InitTask] Audio system initialized.");
+
     // Schedule SD card and UI init as LVGL tasks
     ESP_LOGI(TAG_MAIN, "[InitTask] Scheduling SD card initialization as LVGL task.");
     lv_task_t* sd_init_task = lv_task_create(sd_init, 0, LV_TASK_PRIO_MID, NULL);
@@ -139,6 +151,14 @@ static void initTask(void *pvParameter) {
 
     ESP_LOGI(TAG_MAIN, "[InitTask] Initialization complete. Deleting self.");
     vTaskDelete(NULL);
+}
+
+// Audio processing task
+static void audio_core_processing_task(void *args) {
+	while(true) {
+		xTaskNotifyWait(0, 0, nullptr, portMAX_DELAY);
+		audioManager.largestack_process();
+	}
 }
 
 

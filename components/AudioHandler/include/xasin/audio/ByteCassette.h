@@ -11,15 +11,15 @@
 #include <xasin/audio/Source.h>
 #include <stdint.h>
 #include <vector>
+#include <stdio.h> // Added for FILE*
 
-#define XASAUDIO_CASSETTE(container, samplerate, volume) ((const Xasin::Audio::bytecassette_data_t){container, container + sizeof(container), samplerate, volume})
+#define XASAUDIO_CASSETTE(path, samplerate, volume) ((const Xasin::Audio::bytecassette_data_t){path, samplerate, volume})
 
 namespace Xasin {
 namespace Audio {
 
 struct bytecassette_data_t {
-	const uint8_t *data_start;
-	const uint8_t *data_end;
+	const char *file_path; // Changed from data_start and data_end
 	uint32_t data_samplerate;
 	uint8_t volume;
 };
@@ -28,8 +28,11 @@ typedef std::vector<bytecassette_data_t> ByteCassetteCollection;
 
 class ByteCassette: public Source {
 private:
-	const uint8_t *current_sample;
-	const uint8_t * const sample_end;
+	FILE* sound_file; // Changed from const uint8_t *current_sample
+	long file_size; // To store the size of the sound file
+	long current_file_pos; // To track the current read position in the file
+
+	// const uint8_t * const sample_end; // No longer needed
 
 	uint32_t sample_position_counter;
 	const uint32_t per_sample_increase;
@@ -42,7 +45,7 @@ public:
 
 	uint8_t volume;
 
-	ByteCassette(TX &handler, const uint8_t *sample_ptr, const uint8_t *sample_end,
+	ByteCassette(TX &handler, const char *file_path, // Changed from sample_ptr and sample_end
 			uint32_t intended_samplerate);
 	ByteCassette(TX &handler, const bytecassette_data_t &cassette);
 

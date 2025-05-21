@@ -14,6 +14,8 @@
 namespace Xasin {
 namespace Communication {
 
+std::string get_device_mac_string(); // Function to get device MAC address as string
+
 class EspMeshHandler : public CommHandler {
 public:
     struct EspMeshHandlerConfig {

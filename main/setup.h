@@ -4,6 +4,7 @@
 #include "mcp23008.h"
 #include "lvgl.h"
 #include "EspMeshHandler.h"
+#include "xasin/audio/ByteCassette.h" // For Xasin::Audio::TX
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -20,6 +21,7 @@
 #define MESH_CHANNEL 6 // Default channel 6, range 1-13. 0 for auto-select (not recommended for fixed root)
 
 extern Xasin::Communication::EspMeshHandler g_mesh_handler; // Defined in main.cpp
+extern Xasin::Audio::TX audioManager; // Defined in laser_tag.cpp or main.cpp
 
 // --- MQTT Configuration ---
 #define MQTT_BROKER_URI_STR "mqtt://test.mosquitto.org" // IMPORTANT: Change to your MQTT broker URI
