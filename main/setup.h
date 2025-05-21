@@ -3,19 +3,26 @@
 
 #include "mcp23008.h"
 #include "lvgl.h"
+#include "EspMeshHandler.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "lvgl.h"
 
-#include "xasin/mqtt/Handler.h"
-
 #define LV_TICK_PERIOD_MS 1
 
 #define WIFI_STATION_SSID "Dabney Lounge"
 #define WIFI_STATION_PASSWD "dabneyvictory"
 
+// --- ESP-MESH Configuration ---
+#define MESH_PASSWORD_STR "your_mesh_password" // IMPORTANT: Change to your desired mesh password (min 8 chars)
+#define MESH_CHANNEL 6 // Default channel 6, range 1-13. 0 for auto-select (not recommended for fixed root)
+
+extern Xasin::Communication::EspMeshHandler g_mesh_handler; // Defined in main.cpp
+
+// --- MQTT Configuration ---
+#define MQTT_BROKER_URI_STR "mqtt://test.mosquitto.org" // IMPORTANT: Change to your MQTT broker URI
 
 // --- Terminal Style Definitions ---
 
@@ -68,11 +75,6 @@ void display_touch_init(void);
 void time_overlay_init(void);
 void lvgl_full_init(void);
 void lvgl_tick_timer_setup(void);
-
-/**
- * @brief Initializes the global default styles for UI elements.
- * Called by ui_init().
- */
 void ui_styles_init(void);
 
 #ifdef __cplusplus

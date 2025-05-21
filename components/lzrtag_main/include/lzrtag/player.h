@@ -9,9 +9,10 @@
 #define MAIN_CORE_PLAYER_H_
 
 #include "freertos/FreeRTOS.h"
-#include "xasin/mqtt/Handler.h"
+#include "CommHandler.h"
 
 #include "lzrtag/animatorThread.h"
+#include "lzrtag/pattern_types.h"
 
 #include <cJSON.h>
 
@@ -19,7 +20,7 @@ namespace LZR {
 
 class Player {
 private:
-	void process_data(Xasin::MQTT::MQTT_Packet data);
+	void process_data(Xasin::Communication::CommReceivedData& message);
 
 	uint8_t ID;
 
@@ -44,11 +45,11 @@ private:
 	bool	shotLocked;
 
 public:
-	Xasin::MQTT::Handler &mqtt;
+	Xasin::Communication::CommHandler &comm_handler;
 
 	bool should_reload;
 
-	Player(const std::string devID, Xasin::MQTT::Handler &mqtt);
+	Player(const std::string devID, Xasin::Communication::CommHandler &comm_handler);
 
 	void init();
 	void tick();
@@ -56,7 +57,7 @@ public:
 	int get_id();
 
 	int get_team();
-	pattern_mode_t get_brightness();
+	LZR::pattern_mode_t get_brightness();
 
 	bool 		is_marked();
 	Xasin::NeoController::Color get_marked_color();

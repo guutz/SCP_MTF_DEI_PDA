@@ -34,7 +34,7 @@ void Transmitter::init() {
 	tx_cfg.loop_en = false;
 
 	tx_cfg.carrier_duty_percent = 50;
-	tx_cfg.carrier_freq_hz = 40000;
+	tx_cfg.carrier_freq_hz = 38000;
 	tx_cfg.carrier_en = true;
 	tx_cfg.carrier_level = RMT_CARRIER_LEVEL_HIGH;
 

@@ -9,12 +9,21 @@
 #define MAIN_FX_SOUNDS_H_
 
 #include <string>
+#include "core_defs.h"
 
 namespace LZR {
 namespace Sounds {
 
-void play_audio(std::string aName);
-void init();
+
+class SoundManager {
+  private:
+    Xasin::Audio::TX& audioManager_;
+    Xasin::Communication::CommHandler* comm_handler_;
+  public:
+    SoundManager(Xasin::Audio::TX& audioManager, Xasin::Communication::CommHandler* commHandler);
+    void play_audio(const std::string& aName);
+    void init();
+};
 
 }
 }

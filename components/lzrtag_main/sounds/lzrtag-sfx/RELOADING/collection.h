@@ -1,10 +1,4 @@
 #include <xasin/audio/ByteCassette.h>
-
-// Include the new raw audio data headers
-// Note: This collection previously had RELOADING_SOUND_1, _2, _3.
-// Based on directory listing, these specific files don't exist with that exact naming for _raw.h.
-// Assuming general reload sounds might be used or specific ones like Large_EnergyGun_reload_3_raw.h etc.
-// For now, leaving placeholders. User needs to confirm which reload sounds to use here.
 #include "Large_EnergyGun_reload_3_raw.h"
 #include "RELOADING_2_large_2_raw.h"
 #include "RELOADING_2_middle_2_raw.h"

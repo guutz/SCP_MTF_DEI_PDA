@@ -9,12 +9,6 @@
 namespace Xasin {
 namespace Communication {
 
-// Communication mode
-enum class CommMode {
-    WIFI_MQTT_DIRECT,
-    MESH_NETWORK
-};
-
 // Structure for received messages
 struct CommReceivedData {
     std::string topic; // For MQTT, or a logical topic/group in mesh
@@ -56,6 +50,9 @@ public:
 
     // Returns the MAC address of the device, useful for mesh node identification
     virtual std::string getDeviceId() = 0;
+
+    // Indicates if the handler is operating as a root/master node
+    virtual bool isRootNode() const = 0;
 };
 
 } // namespace Communication

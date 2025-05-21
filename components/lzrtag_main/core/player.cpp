@@ -14,10 +14,11 @@
 #include "lzrtag/colorSets.h"
 
 #include <cJSON.h>
+#include <cstring>
 
 namespace LZR {
 
-Player::Player(const std::string devID, Xasin::MQTT::Handler &mqtt) :
+Player::Player(const std::string devID, Xasin::Communication::CommHandler &comm_handler) :
 	ID(0),
 	team(0), brightness(0),
 	isMarked(false),
@@ -26,86 +27,89 @@ Player::Player(const std::string devID, Xasin::MQTT::Handler &mqtt) :
 	name(""),
 	deadUntil(0), hitUntil(0), vibrateUntil(0),
 	currentGun(0), shotLocked(0),
-	mqtt(mqtt), should_reload(false) {
+	comm_handler(comm_handler), should_reload(false) {
 
-	mqtt.subscribe_to("event/#",
-		[this](Xasin::MQTT::MQTT_Packet data) {
-			if(data.topic == "hit")
-				hitUntil = xTaskGetTickCount() + atof(data.data.data())*600;
-			else if(data.topic == "vibrate")
-				vibrateUntil = xTaskGetTickCount() + atof(data.data.data())*600;
-			else if(data.topic == "reload")
+	comm_handler.subscribe("event/#",
+		[this](const Xasin::Communication::CommReceivedData& message) {
+			std::string topic_str(message.topic.begin(), message.topic.end());
+			std::string payload_str(message.payload.begin(), message.payload.end());
+
+			if(topic_str == "hit")
+				hitUntil = xTaskGetTickCount() + atof(payload_str.c_str())*600;
+			else if(topic_str == "vibrate")
+				vibrateUntil = xTaskGetTickCount() + atof(payload_str.c_str())*600;
+			else if(topic_str == "reload")
 				should_reload = true;
 		}
-	, 0);
+	);
 
-	mqtt.subscribe_to("get/#",
-			[this](Xasin::MQTT::MQTT_Packet data) {
+	comm_handler.subscribe("get/#",
+			[this](const Xasin::Communication::CommReceivedData& message) {
+			std::string topic_str(message.topic.begin(), message.topic.end());
+			std::string payload_str(message.payload.begin(), message.payload.end());
 
 		cJSON * json;
-		if(data.data.size() > 0)
-			json = cJSON_Parse(data.data.data());
-		else
-			json = cJSON_CreateNull();
-
-		if(json == nullptr)
-			return;
-
-		if(data.topic == "id" && (cJSON_IsNumber(json) || cJSON_IsNull(json)))
-			ID = json->valueint;
-		else if(data.topic == "team" && (cJSON_IsNumber(json) || cJSON_IsNull(json)))
-			team = json->valueint;
-		else if(data.topic == "brightness" && (cJSON_IsNumber(json) || cJSON_IsNull(json)))
-			brightness = json->valueint;
-		else if(data.topic == "gun_config") {
-			if(cJSON_IsNull(json)) {
-				currentGun = 0;
-			}
-			else if(cJSON_IsNumber(json))
-				currentGun = json->valueint;
-			
-			shotLocked = currentGun <= 0;
-		}
-		else if(data.topic == "mark_config") {
-			isMarked = !cJSON_IsFalse(json);
-			uint32_t markerCode = json->valueint;
-
-			if(markerCode <= 0)
-				isMarked = false;
-			else if(markerCode < 8)
-				markerColor = LZR::teamColors[markerCode].vestShotEnergy;
+			if(payload_str.length() > 0)
+				json = cJSON_Parse(payload_str.c_str());
 			else
-				markerColor = markerCode;
-		}
-		else if(data.topic == "heartbeat")
-			heartbeat = cJSON_IsTrue(json);
-		else if(data.topic == "name")
-			name = json->valuestring;
-		else if(data.topic == "dead") {
-			if(cJSON_IsTrue(json)) {
-				if(deadUntil == 0) {
-					deadUntil = portMAX_DELAY;
+				json = cJSON_CreateNull();
+
+			if(json == nullptr)
+				return;
+
+			if(topic_str == "id" && (cJSON_IsNumber(json) || cJSON_IsNull(json)))
+				ID = json->valueint;
+			else if(topic_str == "team" && (cJSON_IsNumber(json) || cJSON_IsNull(json)))
+				team = json->valueint;
+			else if(topic_str == "brightness" && (cJSON_IsNumber(json) || cJSON_IsNull(json)))
+				brightness = json->valueint;
+			else if(topic_str == "gun_config") {
+				if(cJSON_IsNull(json)) {
+					currentGun = 0;
+				}
+				else if(cJSON_IsNumber(json))
+					currentGun = json->valueint;
+				
+				shotLocked = currentGun <= 0;
+			}
+			else if(topic_str == "mark_config") {
+				isMarked = !cJSON_IsFalse(json);
+				uint32_t markerCode = json->valueint;
+
+				if(markerCode <= 0)
+					isMarked = false;
+				else if(markerCode < 8)
+					markerColor = LZR::teamColors[markerCode].vestShotEnergy;
+				else
+					markerColor = markerCode;
+			}
+			else if(topic_str == "heartbeat")
+				heartbeat = cJSON_IsTrue(json);
+			else if(topic_str == "name")
+				name = json->valuestring;
+			else if(topic_str == "dead") {
+				if(cJSON_IsTrue(json)) {
+					if(deadUntil == 0) {
+						deadUntil = portMAX_DELAY;
+					}
+				}
+				else {
+					deadUntil = 0;
 				}
 			}
-			else {
-				deadUntil = 0;
-			}
-		}
 
-		cJSON_Delete(json);
-	}, 1);
+			cJSON_Delete(json);
+		}
+	);
 }
 
 void Player::init() {
-
-	mqtt.start(MQTT_SERVER_ADDR);
-	mqtt.set_status("OK");
 }
 
 void Player::tick() {
 	if((deadUntil != 0) && (xTaskGetTickCount() > deadUntil)) {
 		deadUntil = 0;
-		mqtt.publish_to("get/dead", "false", 0, 1, true);
+		comm_handler.publish("get/dead", "false", strlen("false"), 1, true);
 	}
 }
 
@@ -122,7 +126,7 @@ int Player::get_team() {
 }
 
 pattern_mode_t Player::get_brightness() {
-	if(mqtt.is_disconnected())
+    if (!comm_handler.isConnected())
 		return pattern_mode_t::CONNECTING;
 
 	if(is_dead())
@@ -196,7 +200,7 @@ void Player::set_gun_ammo(int32_t current, int32_t clipsize, int32_t total) {
 
 	if(changed) {
 		char * printed = cJSON_PrintUnformatted(gun_ammo_info);
-		mqtt.publish_to("get/ammo", printed, strlen(printed), true, 0);
+		comm_handler.publish("get/ammo", printed, strlen(printed), 0, true);
 		cJSON_free(printed);
 	}
 }

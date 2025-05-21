@@ -1,5 +1,8 @@
 #include "menu_functions.h"
 #include "ota_manager.h"
+#include "laser_tag.h"
+#include "esp_wifi.h" // Add this include for esp_wifi_* functions
+#include "menu_log.h"
 #include <functional>
 
 #define TAG_MENU_FUNC "menu_func"
@@ -12,7 +15,9 @@ extern mcp23008_t main_gpio_extender; // Extern for the main GPIO extender
 
 static bool modal_open = false;
 
-
+// Forward declarations for laser tag mode entry/exit
+void enter_laser_tag_mode_from_menu(void);
+void exit_laser_tag_mode_from_menu(void);
 
 void register_menu_functions(void) {
     // Register the menu functions with the predefined function list
@@ -20,6 +25,8 @@ void register_menu_functions(void) {
     G_PredefinedFunctions["SHOW_WIFI_STATUS"] = show_wifi_status_from_menu;
     G_PredefinedFunctions["PLAY_SOUND"] = play_audio_file_in_background;
     G_PredefinedFunctions["TELESCOPE_CONTROL"] = open_telescope_control_modal;
+    G_PredefinedFunctions["ENTER_LASER_TAG_MODE"] = enter_laser_tag_mode_from_menu;
+    G_PredefinedFunctions["EXIT_LASER_TAG_MODE"] = exit_laser_tag_mode_from_menu;
 }
 
 
@@ -334,4 +341,62 @@ void trigger_ota_update_from_menu(void) {
     // Add joystick group support for close button
     lv_group_t* joy_group = lvgl_joystick_get_group();
     lv_group_add_obj(joy_group, dialog.btn1);
+}
+
+// Helper to get log buffer as a single string (for dashboard, etc)
+std::string get_menu_log_as_string(int max_lines = 16) {
+    auto lines = menu_log_get_buffer();
+    std::string out;
+    int start = (int)lines.size() > max_lines ? (int)lines.size() - max_lines : 0;
+    for (int i = start; i < (int)lines.size(); ++i) {
+        out += lines[i] + "\n";
+    }
+    if (out.empty()) out = "(No log messages)";
+    return out;
+}
+
+// Example: Laser Tag Dashboard screen
+void show_laser_tag_dashboard(void) {
+    // Compose dashboard text (log + status)
+    std::string log_text = get_menu_log_as_string();
+    std::string status = "Laser Tag Mode Active\n";
+    std::string msg = status + "\nRecent Log:\n" + log_text;
+    ModalDialogParts dialog = create_modal_dialog(
+        "Laser Tag Dashboard",
+        msg.c_str(),
+        "EXIT", [](lv_obj_t *obj, lv_event_t event) {
+            if (event == LV_EVENT_CLICKED) {
+                exit_laser_tag_mode_from_menu();
+                close_modal_from_child(obj);
+            }
+        },
+        nullptr, nullptr, nullptr, nullptr, 2
+    );
+    // Add joystick group support for close button
+    lv_group_t* joy_group = lvgl_joystick_get_group();
+    lv_group_add_obj(joy_group, dialog.btn1);
+}
+
+// Menu function to enter laser tag mode
+void enter_laser_tag_mode_from_menu(void) {
+    if (laser_tag_mode_enter()) {
+        menu_log_add(TAG_MENU_FUNC, "Laser tag mode entered successfully.");
+        show_laser_tag_dashboard();
+    } else {
+        menu_log_add(TAG_MENU_FUNC, "Failed to enter laser tag mode.");
+        ModalDialogParts dialog = create_modal_dialog(
+            "Laser Tag Error",
+            "Failed to enter laser tag mode.",
+            "CLOSE", ok_button_cb,
+            nullptr, nullptr, nullptr, nullptr, 2
+        );
+        lv_group_t* joy_group = lvgl_joystick_get_group();
+        lv_group_add_obj(joy_group, dialog.btn1);
+    }
+}
+
+// Menu function to exit laser tag mode
+void exit_laser_tag_mode_from_menu(void) {
+    laser_tag_mode_exit();
+    ESP_LOGI(TAG_MENU_FUNC, "Laser tag mode exited.");
 }

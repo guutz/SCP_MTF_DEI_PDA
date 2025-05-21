@@ -6,7 +6,7 @@
 #include "esp_event.h"     // For esp_event_loop_create_default, etc.
 #include "esp_mesh.h"      // For ESP-MESH API
 #include "nvs_flash.h"   // For nvs_flash_init
-#include "xasin/mqtt/Subscription.h" // Added to provide full definition for delete
+#include "xasin/mqtt/Subscription.h"
 #include <string.h>        // For memcpy, memset, strncpy
 #include <sstream>         // For std::stringstream
 #include <iomanip>         // For std::setw, std::setfill
@@ -60,7 +60,7 @@ EspMeshHandler::EspMeshHandler(bool is_root_node)
       mesh_connected_(false),
       ip_acquired_(false),
       m_mqtt_handler_(), // Default construct Xasin::MQTT::Handler
-      active_subscriptions_() {
+      active_subscriptions_() { // Initialize active_subscriptions_ map
     ESP_LOGI(MESH_TAG, "EspMeshHandler instance created. Is root: %s", is_root_ ? "true" : "false");
 }
 
@@ -97,7 +97,7 @@ bool EspMeshHandler::start(void *config) {
     }
 
 
-    initialize_mesh_and_wifi(current_config_.wifi_ssid, current_config_.wifi_password);
+    initialize_mesh_and_wifi(); // Call argument-less version
 
     mesh_initialized_ = true;
     ESP_LOGI(MESH_TAG, "EspMeshHandler start sequence initiated. Waiting for network events.");
@@ -146,7 +146,7 @@ void EspMeshHandler::stop() {
     ESP_LOGI(MESH_TAG, "EspMeshHandler stopped.");
 }
 
-void EspMeshHandler::initialize_mesh_and_wifi(const std::string& wifi_ssid, const std::string& wifi_password) {
+void EspMeshHandler::initialize_mesh_and_wifi() { // Removed parameters
     ESP_LOGI(MESH_TAG, "Initializing Network Stack, Wi-Fi, and ESP-MESH...");
 
     // 1. Initialize NVS (ensure it's done once globally, typically in app_main)
@@ -214,13 +214,13 @@ void EspMeshHandler::initialize_mesh_and_wifi(const std::string& wifi_ssid, cons
 
     if (is_root_) {
         ESP_LOGI(MESH_TAG, "Configuring as ROOT node.");
-        if (!wifi_ssid.empty()) { // Root connecting to external Wi-Fi
-            mesh_cfg.router.ssid_len = wifi_ssid.length();
-            strncpy((char *)mesh_cfg.router.ssid, wifi_ssid.c_str(), sizeof(mesh_cfg.router.ssid) -1);
+        if (!current_config_.wifi_ssid.empty()) { // Root connecting to external Wi-Fi
+            mesh_cfg.router.ssid_len = current_config_.wifi_ssid.length();
+            strncpy((char *)mesh_cfg.router.ssid, current_config_.wifi_ssid.c_str(), sizeof(mesh_cfg.router.ssid) -1);
             mesh_cfg.router.ssid[sizeof(mesh_cfg.router.ssid) - 1] = '\0'; // Ensure null termination
-            strncpy((char *)mesh_cfg.router.password, wifi_password.c_str(), sizeof(mesh_cfg.router.password) -1);
+            strncpy((char *)mesh_cfg.router.password, current_config_.wifi_password.c_str(), sizeof(mesh_cfg.router.password) -1);
             mesh_cfg.router.password[sizeof(mesh_cfg.router.password) - 1] = '\0'; // Ensure null termination
-            ESP_LOGI(MESH_TAG, "Root will connect to SSID: %s", wifi_ssid.c_str());
+            ESP_LOGI(MESH_TAG, "Root will connect to SSID: %s", current_config_.wifi_ssid.c_str());
         } else { // Standalone root
             ESP_LOGI(MESH_TAG, "Configuring as STANDALONE ROOT node (no external Wi-Fi).");
             mesh_cfg.router.ssid_len = 0;
@@ -395,8 +395,37 @@ void EspMeshHandler::ip_event_handler(void *arg, esp_event_base_t event_base, in
 
 // --- Interface Methods ---
 bool EspMeshHandler::isConnected() const {
-    // Assuming 0 means connected (from Xasin::MQTT::Handler::is_disconnected)
-    return m_mqtt_handler_.is_disconnected() == 0;
+    // For a root node, it's connected if mesh is up AND MQTT is connected (if MQTT is used).
+    // For a child node, it's connected if mesh is up (connected to parent) AND it has an IP.
+    // MQTT connection status for a child might also be relevant if it directly talks to a broker.
+
+    if (!mesh_initialized_ || !mesh_connected_) {
+        ESP_LOGV(MESH_TAG, "isConnected: Basic mesh not up (initialized: %d, connected: %d)", mesh_initialized_, mesh_connected_);
+        return false; // Basic mesh connectivity is required.
+    }
+
+    if (is_root_) {
+        // Root node: needs mesh to be active and, if using external MQTT, MQTT to be connected.
+        // If MQTT broker URI is empty, we assume no MQTT is needed, so just mesh status.
+        if (current_config_.mqtt_broker_uri.empty()) {
+            ESP_LOGV(MESH_TAG, "isConnected (Root, No MQTT URI): IP acquired: %d", ip_acquired_);
+            return ip_acquired_; // Standalone root needs its IP for mesh services.
+        }
+        // Root with MQTT: mesh must be up, IP acquired (either on mesh or external Wi-Fi), and MQTT connected.
+        bool mqtt_ok = (m_mqtt_handler_.is_disconnected() == 0);
+        ESP_LOGV(MESH_TAG, "isConnected (Root, With MQTT URI): IP acquired: %d, MQTT OK: %d", ip_acquired_, mqtt_ok);
+        return ip_acquired_ && mqtt_ok;
+    } else {
+        // Child node: needs to be connected to a parent and have an IP.
+        // If children also use MQTT directly:
+        if (current_config_.mqtt_broker_uri.empty()) { // No MQTT for child
+            ESP_LOGV(MESH_TAG, "isConnected (Child, No MQTT URI): IP acquired: %d", ip_acquired_);
+            return ip_acquired_; // Connected if has IP from mesh
+        }
+        bool mqtt_ok = (m_mqtt_handler_.is_disconnected() == 0);
+        ESP_LOGV(MESH_TAG, "isConnected (Child, With MQTT URI): IP acquired: %d, MQTT OK: %d", ip_acquired_, mqtt_ok);
+        return ip_acquired_ && mqtt_ok;
+    }
 }
 
 bool EspMeshHandler::publish(const std::string& topic, const void* data, size_t length, bool retain, int qos) {
@@ -501,6 +530,10 @@ std::string EspMeshHandler::getDeviceId() {
         device_id_ = get_device_mac_string(); // Ensure it's fetched if not already
     }
     return device_id_;
+}
+
+bool EspMeshHandler::isRootNode() const {
+    return is_root_;
 }
 
 } // namespace Communication

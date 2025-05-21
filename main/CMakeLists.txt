@@ -18,5 +18,7 @@ idf_component_register(
     "telescope_controller.cpp"
     "menu_functions.cpp"
     "laser_tag.cpp"
+    "menu_log.cpp"
+    "persistent_state.cpp"
     INCLUDE_DIRS "."
 )

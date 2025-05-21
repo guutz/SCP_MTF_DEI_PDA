@@ -8,9 +8,6 @@
 #include "xasin/mqtt/Handler.h"
 #include "xasin/mqtt/Subscription.h"
 
-#include "nvs.h"
-#include "nvs_flash.h"
-
 #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 #include "esp_log.h"
 
@@ -88,37 +85,6 @@ void Handler::start(const std::string uri) {
 	start(config);
 }
 
-bool Handler::start_from_nvs() {
-	nvs_handle_t read_handle;
-
-	char uri_buffer[254] = {};
-	size_t uri_length = 254;
-
-	nvs_open("xasin", NVS_READONLY, &read_handle);
-	auto ret = nvs_get_str(read_handle, "mqtt_uri", uri_buffer, &uri_length);
-	nvs_close(read_handle);
-
-	if(ret != ESP_OK)
-		return false;
-
-	ESP_LOGI(mqtt_tag, "Starting from NVS with URI %s", uri_buffer);
-	start(uri_buffer);
-
-	return true;
-}
-
-void Handler::set_nvs_uri(const char *new_uri) {
-	if(strlen(new_uri) > 500)
-		return;
-
-	nvs_handle_t write_handle;
-
-	nvs_open("xasin", NVS_READWRITE, &write_handle);
-	nvs_set_str(write_handle, "mqtt_uri", new_uri);
-
-	nvs_commit(write_handle);
-	nvs_close(write_handle);
-}
 
 void Handler::mqtt_handler(esp_mqtt_event_t *event) {
 	xSemaphoreTake(config_lock, portMAX_DELAY);
@@ -139,9 +105,6 @@ void Handler::mqtt_handler(esp_mqtt_event_t *event) {
 	case MQTT_EVENT_DISCONNECTED:
 		mqtt_connected = false;
 		ESP_LOGW(mqtt_tag, "Disconnected from broker!");
-
-//		if(wifi_connected)
-//			esp_mqtt_client_reconnect(mqtt_handle);
 	break;
 
 	case MQTT_EVENT_DATA: {

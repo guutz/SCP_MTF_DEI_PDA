@@ -60,6 +60,7 @@ const ColorSet teamColors[] = {
 			.vestShotEnergy = 0xAAAAFF
 		}
 };
+const size_t NUM_TEAM_COLORS = sizeof(teamColors) / sizeof(teamColors[0]);
 
 const FXSet brightnessLevels[] = {
 		{	// Idle
@@ -89,5 +90,6 @@ const FXSet brightnessLevels[] = {
 			.waverPositionShift = 0.2,
 		}
 };
+const size_t NUM_BRIGHTNESS_LEVELS = sizeof(brightnessLevels) / sizeof(brightnessLevels[0]);
 
 }

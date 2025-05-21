@@ -1,5 +1,3 @@
-
-
 #include <lzrtag/weapon.h>
 
 namespace LZRTag {
@@ -11,6 +9,8 @@ BaseWeapon::BaseWeapon(Handler &handler)
 	wants_to_reload(false), reload_duration(1000 / portTICK_PERIOD_MS) {
 
 }
+
+BaseWeapon::~BaseWeapon() {}
 
 bool BaseWeapon::can_shoot() {
 	return false;

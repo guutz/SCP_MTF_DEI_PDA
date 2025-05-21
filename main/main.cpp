@@ -34,9 +34,6 @@
 #include "lvgl.h"
 #include "lvgl_helpers.h"
 
-// Other Libraries
-#include <xnm/net_helpers.h> // Assuming this is a third-party or external library
-
 //                       ..,,,,,,,,,,,,,,,,.                                                                      
 //                      .%@&%%##########%%@@(.                                                                    
 //                      ,&&(,............*%@&,                                                                    
@@ -75,7 +72,7 @@ static void wifi_init_task(void *pvParameter);
 static void initTask(void *pvParameter);
 static void peripheralsTask(void *pvParameter);
 SemaphoreHandle_t xGuiSemaphore;
-static Xasin::Communication::EspMeshHandler g_mesh_handler; // Global instance for ESP-MESH handler
+Xasin::Communication::EspMeshHandler g_mesh_handler;
 
 mcp23008_t main_gpio_extender = {
     .port = I2C_NUM_0,
@@ -150,13 +147,18 @@ static void wifi_init_task(void *pvParameter) {
     ESP_LOGI(TAG_MAIN, "Wi-Fi/Mesh init task started, waiting for 3 seconds...");
     vTaskDelay(pdMS_TO_TICKS(3000)); // Wait for 3 seconds
 
-    ESP_LOGI(TAG_MAIN, "Initializing ESP-MESH and Wi-Fi...");
-    // XNM::NetHelpers::init_global_r3_ca(); // This might be needed if your MQTT handler relies on it for certificates
-    // Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD); // Removed: Old Wi-Fi start
+    ESP_LOGI(TAG_MAIN, "Configuring and starting ESP-MESH handler...");
     
-    // WIFI_STATION_SSID and WIFI_STATION_PASSWD should be defined in "setup.h" or another config file
-    g_mesh_handler.initialize_mesh_and_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
-    g_mesh_handler.start();
+    Xasin::Communication::EspMeshHandler::EspMeshHandlerConfig mesh_config;
+    mesh_config.wifi_ssid = WIFI_STATION_SSID;
+    mesh_config.wifi_password = WIFI_STATION_PASSWD;
+
+    // Populate ESP-MESH and MQTT specific configurations
+    mesh_config.mesh_password = MESH_PASSWORD_STR;
+    mesh_config.mesh_channel = MESH_CHANNEL; // This is uint8_t
+    mesh_config.mqtt_broker_uri = MQTT_BROKER_URI_STR;
+
+    g_mesh_handler.start(&mesh_config);
 
     ESP_LOGI(TAG_MAIN, "Wi-Fi/Mesh init task finished, deleting self.");
     vTaskDelete(NULL);
