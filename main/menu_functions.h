@@ -47,13 +47,6 @@ void register_menu_functions(void);
 void trigger_ota_update_from_menu(void);
 
 /**
- * @brief Toggle WiFi on or off from the menu
- * This function is registered with G_PredefinedFunctions to allow
- * WiFi to be toggled from a menu button
- */
-void toggle_wifi_from_menu(void);
-
-/**
  * @brief Display WiFi status information
  * Shows current WiFi connection status, IP address, and signal strength
  */

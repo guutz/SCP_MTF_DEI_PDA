@@ -7,9 +7,6 @@
 
 static const char *TAG_JOYSTICK = "joystick";
 
-// Extern declaration for the global Wi-Fi intentional stop flag defined in main.cpp
-extern volatile bool g_wifi_intentional_stop;
-
 // ADC Calibration
 static esp_adc_cal_characteristics_t adc_chars_axis1;
 static esp_adc_cal_characteristics_t adc_chars_axis2;
@@ -157,24 +154,12 @@ esp_err_t joystick_init(void) {
         return ret;
     }
 
-    // Configure ADC for Joystick Axis 2
-#ifdef USE_ADC1_FOR_JOYSTICK_Y
     // If Y-axis is on ADC1, configure its channel attenuation here as well.
     ret = adc1_config_channel_atten(JOYSTICK_AXIS2_ADC_CHANNEL, ADC_ATTENUATION);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG_JOYSTICK, "Failed to configure ADC1 channel %d for Y-axis attenuation: %s", JOYSTICK_AXIS2_ADC_CHANNEL, esp_err_to_name(ret));
         return ret;
     }
-#else
-    // Original: Configure ADC2 for Joystick Axis 2 (GPIO25 - ADC2_CHANNEL_8)
-    // Note: adc2_config_channel_atten is called before each read for ADC2
-    // We still configure the width here.
-    ret = adc2_config_channel_atten(JOYSTICK_AXIS2_ADC_CHANNEL, ADC_ATTENUATION);
-     if (ret != ESP_OK) {
-        ESP_LOGE(TAG_JOYSTICK, "Failed to configure ADC2 channel %d attenuation: %s", JOYSTICK_AXIS2_ADC_CHANNEL, esp_err_to_name(ret));
-        return ret;
-    }
-#endif
 
 
     // ADC Calibration (optional, but recommended for accuracy)
@@ -197,30 +182,20 @@ esp_err_t joystick_init(void) {
     
     esp_err_t cal_ret_axis2 = esp_adc_cal_check_efuse(ESP_ADC_CAL_VAL_EFUSE_VREF);
     if (cal_ret_axis2 == ESP_OK) {
-#ifdef USE_ADC1_FOR_JOYSTICK_Y
+
         ESP_LOGI(TAG_JOYSTICK, "ADC1 eFuse Vref is available (for Y-axis)");
         // If Y-axis is on ADC1, this characterization might be redundant if JOYSTICK_AXIS1_ADC_UNIT is also ADC_UNIT_1.
         // We assume adc_chars_axis2 is intended for the second axis regardless of unit.
         esp_adc_cal_characterize(JOYSTICK_AXIS2_ADC_UNIT, ADC_ATTENUATION, ADC_WIDTH, 0, &adc_chars_axis2); 
-#else
-        ESP_LOGI(TAG_JOYSTICK, "ADC2 eFuse Vref is available");
-        esp_adc_cal_characterize(ADC_UNIT_2, ADC_ATTENUATION, ADC_WIDTH, 0, &adc_chars_axis2); // 0 for default Vref
-#endif
+
          // adc_calibrated = true; // adc_calibrated is shared, ensure this logic is sound if one unit calibrates and other doesn't
     } else if (cal_ret_axis2 == ESP_ERR_NOT_SUPPORTED || cal_ret_axis2 == ESP_ERR_INVALID_VERSION) {
-#ifdef USE_ADC1_FOR_JOYSTICK_Y
+
         ESP_LOGW(TAG_JOYSTICK, "ADC1 eFuse Vref not supported or invalid version for Y-axis, using default Vref for characterization");
         esp_adc_cal_characterize(JOYSTICK_AXIS2_ADC_UNIT, ADC_ATTENUATION, ADC_WIDTH, ESP_ADC_CAL_VAL_DEFAULT_VREF, &adc_chars_axis2);
-#else
-        ESP_LOGW(TAG_JOYSTICK, "ADC2 eFuse Vref not supported or invalid version, using default Vref for characterization");
-        esp_adc_cal_characterize(ADC_UNIT_2, ADC_ATTENUATION, ADC_WIDTH, ESP_ADC_CAL_VAL_DEFAULT_VREF, &adc_chars_axis2);
-#endif
+
     } else {
-#ifdef USE_ADC1_FOR_JOYSTICK_Y
-        ESP_LOGE(TAG_JOYSTICK, "ADC1 eFuse Vref calibration failed for Y-axis: %s", esp_err_to_name(cal_ret_axis2));
-#else
         ESP_LOGE(TAG_JOYSTICK, "ADC2 eFuse Vref calibration failed: %s", esp_err_to_name(cal_ret_axis2));
-#endif
         // adc_calibrated = false; // If ADC1 calibrated but ADC2 didn't, how to handle? For now, joystick_read might return raw if this specific unit failed.
     }
 
@@ -253,8 +228,6 @@ esp_err_t joystick_read_state(mcp23008_t *mcp, JoystickState_t *state) {
     }
     state->x = adc_raw;
 
-    // Read Joystick Y (Axis 2)
-#ifdef USE_ADC1_FOR_JOYSTICK_Y
     adc_raw = adc1_get_raw(JOYSTICK_AXIS2_ADC_CHANNEL);
     if (adc_raw == -1) {
         ESP_LOGW(TAG_JOYSTICK, "Failed to read ADC1 for Joystick Y. Setting Y to 0.");
@@ -263,16 +236,6 @@ esp_err_t joystick_read_state(mcp23008_t *mcp, JoystickState_t *state) {
     } else {
         state->y = adc_raw;
     }
-#else // USE_ADC1_FOR_JOYSTICK_Y not defined
-    ret = adc2_get_raw(JOYSTICK_AXIS2_ADC_CHANNEL, ADC_WIDTH, &adc_raw);
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG_JOYSTICK, "Failed to read ADC2 for Joystick Y: %s. Setting Y to 0.", esp_err_to_name(ret));
-        state->y = 0; // Set Y to 0 on ADC2 read failure
-        // Do not return error, continue to read button
-    } else {
-        state->y = adc_raw;
-    }
-#endif // USE_ADC1_FOR_JOYSTICK_Y
 
     // Read Joystick Button
     bool button_val;
@@ -342,29 +305,3 @@ esp_err_t battery_read_voltage(mcp23008_t *mcp, float *voltage) {
     }
     return ESP_OK;
 }
-
-#ifndef USE_ADC1_FOR_JOYSTICK_Y
-// Function to enable/disable Wi-Fi for prioritizing dual-axis joystick readings
-void set_joystick_dual_axis_priority(bool prioritize_dual_axis) {
-    if (prioritize_dual_axis) {
-        ESP_LOGI(TAG_JOYSTICK, "Prioritizing dual-axis joystick (ADC2): Stopping Wi-Fi.");
-        g_wifi_intentional_stop = true; // Signal that the stop is intentional
-        esp_err_t stop_err = esp_wifi_stop();
-        if (stop_err == ESP_OK) {
-            ESP_LOGI(TAG_JOYSTICK, "Wi-Fi stopped successfully for ADC2 priority.");
-        } else {
-            ESP_LOGE(TAG_JOYSTICK, "Failed to stop Wi-Fi: %s", esp_err_to_name(stop_err));
-            // If stopping fails, we might still have ADC2 issues.
-        }
-    } else {
-        ESP_LOGI(TAG_JOYSTICK, "Restoring normal Wi-Fi operation.");
-        g_wifi_intentional_stop = false; // Clear the flag before starting
-        esp_err_t start_err = esp_wifi_start(); // This will trigger events for the handler to reconnect
-        if (start_err == ESP_OK) {
-            ESP_LOGI(TAG_JOYSTICK, "Wi-Fi start initiated. MQTT handler should reconnect.");
-        } else {
-            ESP_LOGE(TAG_JOYSTICK, "Failed to start Wi-Fi: %s", esp_err_to_name(start_err));
-        }
-    }
-}
-#endif // USE_ADC1_FOR_JOYSTICK_Y

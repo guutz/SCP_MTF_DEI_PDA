@@ -1,6 +1,10 @@
 #include "menu_functions.h"
 #include "ota_manager.h"
+#include "laser_tag.h"
+#include "esp_wifi.h" // Add this include for esp_wifi_* functions
+#include "menu_log.h"
 #include <functional>
+#include "xasin/audio/ByteCassette.h" // Added for Xasin Audio
 
 #define TAG_MENU_FUNC "menu_func"
 
@@ -8,19 +12,22 @@ static void close_modal_from_child(lv_obj_t *obj);
 static void ok_button_cb(lv_obj_t *obj, lv_event_t event);
 static void blink_mcp_led(MCP23008_NamedPin pin, uint32_t duration_ms);
 
-extern mcp23008_t mcp23008_device;
+extern mcp23008_t main_gpio_extender; // Extern for the main GPIO extender
 
 static bool modal_open = false;
 
-
+// Forward declarations for laser tag mode entry/exit
+void enter_laser_tag_mode_from_menu(void);
+void exit_laser_tag_mode_from_menu(void);
 
 void register_menu_functions(void) {
     // Register the menu functions with the predefined function list
     G_PredefinedFunctions["OTA_UPDATE"] = trigger_ota_update_from_menu;
-    G_PredefinedFunctions["TOGGLE_WIFI"] = toggle_wifi_from_menu;
     G_PredefinedFunctions["SHOW_WIFI_STATUS"] = show_wifi_status_from_menu;
     G_PredefinedFunctions["PLAY_SOUND"] = play_audio_file_in_background;
     G_PredefinedFunctions["TELESCOPE_CONTROL"] = open_telescope_control_modal;
+    G_PredefinedFunctions["ENTER_LASER_TAG_MODE"] = enter_laser_tag_mode_from_menu;
+    G_PredefinedFunctions["EXIT_LASER_TAG_MODE"] = exit_laser_tag_mode_from_menu;
 }
 
 
@@ -34,90 +41,6 @@ void handle_focus_change(lv_obj_t *obj, lv_event_t event) {
             lv_group_focus_prev((lv_group_t *)lv_obj_get_group(obj)); // Cast to lv_group_t*
         }
     }
-}
-
-void toggle_wifi_from_menu(void) {
-    ESP_LOGI(TAG_MENU_FUNC, "WiFi toggle triggered from menu");
-    wifi_mode_t current_mode;
-    esp_err_t err = esp_wifi_get_mode(&current_mode);
-    bool wifi_is_on = (err == ESP_OK && current_mode != WIFI_MODE_NULL);
-
-    // Button event handlers
-    auto yes_cb = [](lv_obj_t *obj, lv_event_t event) {
-        if (event == LV_EVENT_CLICKED) {
-            bool wifi_is_on = (bool)lv_obj_get_user_data(obj);
-            close_modal_from_child(obj);
-            lv_obj_t *status_msg = lv_label_create(lv_scr_act(), NULL);
-            if (wifi_is_on) {
-                lv_label_set_text(status_msg, "Turning WiFi OFF...");
-                lv_obj_add_style(status_msg, LV_OBJ_PART_MAIN, &style_default_label);
-                lv_obj_align(status_msg, NULL, LV_ALIGN_CENTER, 0, 0);
-                lv_task_t *wifi_task = lv_task_create([](lv_task_t *task) {
-                    g_wifi_intentional_stop = true;
-                    esp_err_t stop_err = esp_wifi_stop();
-                    lv_obj_t *msg = (lv_obj_t*)task->user_data;
-                    if (msg) {
-                        if (stop_err == ESP_OK) {
-                            lv_label_set_text(msg, "WiFi turned OFF");
-                        } else {
-                            lv_label_set_text(msg, "WiFi OFF failed!");
-                            ESP_LOGE(TAG_MENU_FUNC, "Failed to stop WiFi: %s", esp_err_to_name(stop_err));
-                        }
-                        lv_task_t *msg_task = lv_task_create([](lv_task_t *msg_task) {
-                            lv_obj_t *msg = (lv_obj_t*)msg_task->user_data;
-                            if (msg) {
-                                lv_obj_del(msg);
-                            }
-                            lv_task_del(msg_task);
-                        }, 2000, LV_TASK_PRIO_LOW, NULL);
-                        msg_task->user_data = msg;
-                        lv_task_once(msg_task);
-                    }
-                    lv_task_del(task);
-                }, 100, LV_TASK_PRIO_MID, NULL);
-                wifi_task->user_data = status_msg;
-                lv_task_once(wifi_task);
-            } else {
-                lv_label_set_text(status_msg, "Turning WiFi ON...");
-                lv_obj_add_style(status_msg, LV_OBJ_PART_MAIN, &style_default_label);
-                lv_obj_align(status_msg, NULL, LV_ALIGN_CENTER, 0, 0);
-                lv_task_t *wifi_task = lv_task_create([](lv_task_t *task) {
-                    g_wifi_intentional_stop = false;
-                    Xasin::MQTT::Handler::start_wifi(WIFI_STATION_SSID, WIFI_STATION_PASSWD);
-                    lv_obj_t *msg = (lv_obj_t*)task->user_data;
-                    if (msg) {
-                        lv_label_set_text(msg, "WiFi turned ON\nConnecting...");
-                        lv_task_t *msg_task = lv_task_create([](lv_task_t *msg_task) {
-                            lv_obj_t *msg = (lv_obj_t*)msg_task->user_data;
-                            if (msg) {
-                                lv_obj_del(msg);
-                            }
-                            lv_task_del(msg_task);
-                        }, 2000, LV_TASK_PRIO_LOW, NULL);
-                        msg_task->user_data = msg;
-                        lv_task_once(msg_task);
-                    }
-                    lv_task_del(task);
-                }, 100, LV_TASK_PRIO_MID, NULL);
-                wifi_task->user_data = status_msg;
-                lv_task_once(wifi_task);
-            }
-        } else {
-            handle_focus_change(obj, event);
-        }
-    };
-    auto no_cb = [](lv_obj_t *obj, lv_event_t event) {
-        if (event == LV_EVENT_CLICKED) {
-            close_modal_from_child(obj);
-        } else {
-            handle_focus_change(obj, event);
-        }
-    };
-    create_modal_dialog(
-        "WIFI CONTROL",
-        wifi_is_on ? "WiFi is currently ON\nDo you want to turn it OFF?" : "WiFi is currently OFF\nDo you want to turn it ON?",
-        "YES", yes_cb, "NO", no_cb, (void*)(wifi_is_on ? 1 : 0), nullptr
-    );
 }
 
 void show_wifi_status_from_menu(void) {
@@ -140,11 +63,7 @@ void show_wifi_status_from_menu(void) {
         esp_err_t err = esp_wifi_get_mode(&mode);
         char status_buf[256];
         if (err != ESP_OK || mode == WIFI_MODE_NULL) {
-            if (g_wifi_intentional_stop) {
-                snprintf(status_buf, sizeof(status_buf), "WiFi Status: OFF (INTENTIONAL)\n\nWiFi was manually disabled.\nUse 'Toggle WiFi' to enable.");
-            } else {
-                snprintf(status_buf, sizeof(status_buf), "WiFi Status: OFF\n\nWiFi is currently disabled.\nUse 'Toggle WiFi' to enable.");
-            }
+            snprintf(status_buf, sizeof(status_buf), "WiFi Status: OFF\n\nWiFi is currently disabled.");
         } else {
             wifi_ap_record_t ap_info;
             err = esp_wifi_sta_get_ap_info(&ap_info);
@@ -271,12 +190,19 @@ static void ok_button_cb(lv_obj_t *obj, lv_event_t event) {
 // Custom predefined function to play an audio file in the background
 void play_audio_file_in_background(void) {
     const char* audio_file_path = "DEI/sounds/GameStart.raw"; // Replace with actual file path
-    ESP_LOGI(TAG_MENU_FUNC, "Playing audio file in the background: %s", audio_file_path);
+    ESP_LOGI(TAG_MENU_FUNC, "Playing audio file using Xasin::Audio: %s", audio_file_path);
 
-    esp_err_t result = audio_player_play_file(audio_file_path, 8000);
-    if (result != ESP_OK) {
-        ESP_LOGE(TAG_MENU_FUNC, "Failed to play audio file: %s", esp_err_to_name(result));
-    }
+    Xasin::Audio::bytecassette_data_t audio_data = {
+        .file_path = audio_file_path,
+        .data_samplerate = 8000,
+        .volume = 128 
+    };
+
+    // Assuming audioManager is globally accessible (e.g., externed in laser_tag.h or setup.h)
+    Xasin::Audio::ByteCassette::play(audioManager, audio_data);
+
+    // The Xasin::Audio::ByteCassette::play method is void, so direct error checking like before isn't possible here.
+    // Playback is handled by the audio manager; further error handling would be within that system or via callbacks if implemented.
 }
 
 void open_telescope_control_modal(void) {
@@ -374,7 +300,7 @@ void open_telescope_control_modal(void) {
     joystick_task = lv_task_create([](lv_task_t *task) {
         if (!telescope) return;
         JoystickState_t js;
-        if (joystick_read_state(&mcp23008_device, &js) == ESP_OK) {
+        if (joystick_read_state(&main_gpio_extender, &js) == ESP_OK) {
             telescope->process_joystick_input(&js);
         }
     }, 100, LV_TASK_PRIO_LOW, NULL); // 100ms polling
@@ -382,10 +308,10 @@ void open_telescope_control_modal(void) {
 
 // Helper: blink any MCP23008 LED for a given duration (non-blocking)
 static void blink_mcp_led(MCP23008_NamedPin pin, uint32_t duration_ms) {
-    mcp23008_wrapper_write_pin(&mcp23008_device, pin, true);
+    mcp23008_wrapper_write_pin(&main_gpio_extender, pin, true);
     lv_task_t* led_task = lv_task_create([](lv_task_t* task) {
         MCP23008_NamedPin pin = (MCP23008_NamedPin)(uintptr_t)task->user_data;
-        mcp23008_wrapper_write_pin(&mcp23008_device, pin, false);
+        mcp23008_wrapper_write_pin(&main_gpio_extender, pin, false);
         lv_task_del(task);
     }, duration_ms, LV_TASK_PRIO_LOW, (void*)(uintptr_t)pin);
     lv_task_once(led_task);
@@ -423,4 +349,62 @@ void trigger_ota_update_from_menu(void) {
     // Add joystick group support for close button
     lv_group_t* joy_group = lvgl_joystick_get_group();
     lv_group_add_obj(joy_group, dialog.btn1);
+}
+
+// Helper to get log buffer as a single string (for dashboard, etc)
+std::string get_menu_log_as_string(int max_lines = 16) {
+    auto lines = menu_log_get_buffer();
+    std::string out;
+    int start = (int)lines.size() > max_lines ? (int)lines.size() - max_lines : 0;
+    for (int i = start; i < (int)lines.size(); ++i) {
+        out += lines[i] + "\n";
+    }
+    if (out.empty()) out = "(No log messages)";
+    return out;
+}
+
+// Example: Laser Tag Dashboard screen
+void show_laser_tag_dashboard(void) {
+    // Compose dashboard text (log + status)
+    std::string log_text = get_menu_log_as_string();
+    std::string status = "Laser Tag Mode Active\n";
+    std::string msg = status + "\nRecent Log:\n" + log_text;
+    ModalDialogParts dialog = create_modal_dialog(
+        "Laser Tag Dashboard",
+        msg.c_str(),
+        "EXIT", [](lv_obj_t *obj, lv_event_t event) {
+            if (event == LV_EVENT_CLICKED) {
+                exit_laser_tag_mode_from_menu();
+                close_modal_from_child(obj);
+            }
+        },
+        nullptr, nullptr, nullptr, nullptr, 2
+    );
+    // Add joystick group support for close button
+    lv_group_t* joy_group = lvgl_joystick_get_group();
+    lv_group_add_obj(joy_group, dialog.btn1);
+}
+
+// Menu function to enter laser tag mode
+void enter_laser_tag_mode_from_menu(void) {
+    if (laser_tag_mode_enter()) {
+        menu_log_add(TAG_MENU_FUNC, "Laser tag mode entered successfully.");
+        show_laser_tag_dashboard();
+    } else {
+        menu_log_add(TAG_MENU_FUNC, "Failed to enter laser tag mode.");
+        ModalDialogParts dialog = create_modal_dialog(
+            "Laser Tag Error",
+            "Failed to enter laser tag mode.",
+            "CLOSE", ok_button_cb,
+            nullptr, nullptr, nullptr, nullptr, 2
+        );
+        lv_group_t* joy_group = lvgl_joystick_get_group();
+        lv_group_add_obj(joy_group, dialog.btn1);
+    }
+}
+
+// Menu function to exit laser tag mode
+void exit_laser_tag_mode_from_menu(void) {
+    laser_tag_mode_exit();
+    ESP_LOGI(TAG_MENU_FUNC, "Laser tag mode exited.");
 }

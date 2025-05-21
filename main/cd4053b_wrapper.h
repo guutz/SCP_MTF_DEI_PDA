@@ -72,6 +72,42 @@ typedef enum {
  */
 esp_err_t cd4053b_select_named_path(mcp23008_t *mcp, CD4053B_NamedPath path);
 
+// --- Main board mux paths ---
+typedef enum {
+    MAIN_MUX_S1_PATH_A0_JOYSTICK_AXIS1, // S1, path 0 (MCP_PIN_CD4053B_S1 = LOW)
+    MAIN_MUX_S1_PATH_A1_BATT_SENSE,     // S1, path 1 (MCP_PIN_CD4053B_S1 = HIGH)
+    MAIN_MUX_S2_PATH_B0_ACCESSORY_A,    // S2, path 0 (MCP_PIN_CD4053B_S2 = LOW)
+    MAIN_MUX_S2_PATH_B1_ACCESSORY_B,    // S2, path 1 (MCP_PIN_CD4053B_S2 = HIGH)
+    MAIN_MUX_S3_PATH_C0_JOYSTICK_AXIS2, // S3, path 0 (MCP_PIN_CD4053B_S3 = LOW)
+    MAIN_MUX_S3_PATH_C1_ACCESSORY_S2    // S3, path 1 (MCP_PIN_CD4053B_S3 = HIGH)
+} MainMuxPath;
+
+/**
+ * @brief Selects a specific named path on the main CD4053B multiplexer.
+ * @param mcp Pointer to the initialized MCP23008 device structure (main).
+ * @param path The descriptive MainMuxPath to select.
+ * @return ESP_OK on success, or an error code on failure.
+ */
+esp_err_t cd4053b_select_main_path(mcp23008_t *mcp, MainMuxPath path);
+
+// --- Gun board mux paths ---
+typedef enum {
+    GUN_MUX_S1_PATH_A0_ACCESSORY_1, // S1, path 0 (MCP2_PIN_CD4053B_S1 = LOW)
+    GUN_MUX_S1_PATH_A1_ACCESSORY_2, // S1, path 1 (MCP2_PIN_CD4053B_S1 = HIGH)
+    GUN_MUX_S2_PATH_B0_IR_RX, // S2, path 0 (MCP2_PIN_CD4053B_S2 = LOW)
+    GUN_MUX_S2_PATH_B1_NEOPIXEL, // S2, path 1 (MCP2_PIN_CD4053B_S2 = HIGH)
+    GUN_MUX_S3_PATH_C0_IR_TX, // S3, path 0 (MCP2_PIN_CD4053B_S3 = LOW)
+    GUN_MUX_S3_PATH_C1_ACCESSORY_S1  // S3, path 1 (MCP2_PIN_CD4053B_S3 = HIGH)
+} GunMuxPath;
+
+/**
+ * @brief Selects a specific named path on the gun CD4053B multiplexer.
+ * @param mcp Pointer to the initialized MCP23008 device structure (gun).
+ * @param path The descriptive GunMuxPath to select.
+ * @return ESP_OK on success, or an error code on failure.
+ */
+esp_err_t cd4053b_select_gun_path(mcp23008_t *mcp, GunMuxPath path);
+
 #ifdef __cplusplus
 }
 #endif

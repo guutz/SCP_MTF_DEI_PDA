@@ -3,12 +3,11 @@
 #include <sys/stat.h> // For stat() in sd_raw_file_exists
 #include <errno.h> // Required for errno
 #include "esp_log.h"
-#include "sd_manager.h"
 
 // Expose the mutex for SD operations
 extern SemaphoreHandle_t s_sd_mutex;
 
-static const char* s_raw_mount_point = MOUNT_POINT;
+static const char* s_raw_mount_point = "/sdcard"; // Mount point for SD card
 static const char* TAG_RAW_SD = "sd_raw_access";
 
 #define MAX_FULL_PATH_LEN 256 // Max length for full path including mount point
