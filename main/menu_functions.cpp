@@ -5,6 +5,10 @@
 #include "menu_log.h"
 #include <functional>
 #include "xasin/audio/ByteCassette.h" // Added for Xasin Audio
+#include "xasin/BatteryManager.h"
+#include "joystick.h"
+#include "setup.h"
+#include "cd4053b_wrapper.h"
 
 #define TAG_MENU_FUNC "menu_func"
 
@@ -18,7 +22,7 @@ static bool modal_open = false;
 
 // Forward declarations for laser tag mode entry/exit
 void enter_laser_tag_mode_from_menu(void);
-void exit_laser_tag_mode_from_menu(void);
+static void exit_laser_tag_mode_from_menu(lv_obj_t *obj, lv_event_t event);
 
 void register_menu_functions(void) {
     // Register the menu functions with the predefined function list
@@ -27,7 +31,7 @@ void register_menu_functions(void) {
     G_PredefinedFunctions["PLAY_SOUND"] = play_audio_file_in_background;
     G_PredefinedFunctions["TELESCOPE_CONTROL"] = open_telescope_control_modal;
     G_PredefinedFunctions["ENTER_LASER_TAG_MODE"] = enter_laser_tag_mode_from_menu;
-    G_PredefinedFunctions["EXIT_LASER_TAG_MODE"] = exit_laser_tag_mode_from_menu;
+    G_PredefinedFunctions["BATTERY_STATUS"] = show_battery_status_from_menu;
 }
 
 
@@ -372,12 +376,7 @@ void show_laser_tag_dashboard(void) {
     ModalDialogParts dialog = create_modal_dialog(
         "Laser Tag Dashboard",
         msg.c_str(),
-        "EXIT", [](lv_obj_t *obj, lv_event_t event) {
-            if (event == LV_EVENT_CLICKED) {
-                exit_laser_tag_mode_from_menu();
-                close_modal_from_child(obj);
-            }
-        },
+        "EXIT", exit_laser_tag_mode_from_menu,
         nullptr, nullptr, nullptr, nullptr, 2
     );
     // Add joystick group support for close button
@@ -395,7 +394,7 @@ void enter_laser_tag_mode_from_menu(void) {
         ModalDialogParts dialog = create_modal_dialog(
             "Laser Tag Error",
             "Failed to enter laser tag mode.",
-            "CLOSE", ok_button_cb,
+            "CLOSE", exit_laser_tag_mode_from_menu,
             nullptr, nullptr, nullptr, nullptr, 2
         );
         lv_group_t* joy_group = lvgl_joystick_get_group();
@@ -404,7 +403,36 @@ void enter_laser_tag_mode_from_menu(void) {
 }
 
 // Menu function to exit laser tag mode
-void exit_laser_tag_mode_from_menu(void) {
+void exit_laser_tag_mode_from_menu(lv_obj_t *obj, lv_event_t event) {
+    if (event != LV_EVENT_CLICKED) return; // Only handle click event
     laser_tag_mode_exit();
     ESP_LOGI(TAG_MENU_FUNC, "Laser tag mode exited.");
+    ok_button_cb(obj, event);
+}
+
+void show_battery_status_from_menu(void) {
+    float voltage = 0.0f;
+    esp_err_t ret = battery_read_voltage(&main_gpio_extender, &voltage);
+    char msg[128];
+    if (ret == ESP_OK) {
+        // Update the global battery manager
+        g_battery_manager.set_voltage((uint32_t)(voltage * 1000.0f));
+        uint8_t percent = g_battery_manager.current_capacity();
+        snprintf(msg, sizeof(msg), "Battery Voltage: %.2f V\nBattery Level: %u%%\nStatus: %s",
+                 voltage, percent, g_battery_manager.battery_ok() ? "OK" : "LOW");
+    } else {
+        snprintf(msg, sizeof(msg), "Failed to read battery voltage!\nError: %d", ret);
+    }
+    // Restore CD4053B S1 path to joystick axis after battery read
+    cd4053b_select_named_path(&main_gpio_extender, CD4053B_S1_PATH_A0_JOYSTICK_AXIS1);
+
+    ModalDialogParts dialog = create_modal_dialog(
+        "Battery Status",
+        msg,
+        "CLOSE", ok_button_cb
+    );
+    // Add joystick group support for close button
+    lv_group_t* joy_group = lvgl_joystick_get_group();
+    if (dialog.btn1) lv_group_add_obj(joy_group, dialog.btn1);
+    lv_group_focus_obj(dialog.btn1);
 }

@@ -276,11 +276,8 @@ void Animator::status_led_tick_internal() {
     switch(*main_weapon_status_) {
     case LZRTag_WPN_STAT_CHARGING: {
         int cycleTime = xTaskGetTickCount() % 1200;
-        if(battery_->is_charging)
-            batBrightness = 0.4f + 0.6f*cycleTime/1200.0f;
-        else if(cycleTime%600 < 300)
-            batBrightness = 0.6f;
-    break;
+        batBrightness = 0.6f; // Always use a fixed brightness for CHARGING state
+        break;
     }
     case LZRTag_WPN_STAT_DISCHARGED:
         if(xTaskGetTickCount()%300 < 150) {

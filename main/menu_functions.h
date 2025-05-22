@@ -66,4 +66,9 @@ void play_audio_file_in_background(void);
  */
 void open_telescope_control_modal(void);
 
+/**
+ * @brief Show battery status in a modal dialog and update the global BatteryManager.
+ */
+void show_battery_status_from_menu(void);
+
 #endif

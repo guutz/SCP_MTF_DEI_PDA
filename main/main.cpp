@@ -14,6 +14,7 @@
 #include "EspMeshHandler.h"
 #include "xasin/audio/AudioTX.h"
 #include "xasin/audio/ByteCassette.h" // For Xasin::Audio::TX
+#include "xasin/BatteryManager.h"
 
 // C Standard Library
 #include <stdbool.h>
@@ -78,6 +79,7 @@ static void audio_core_processing_task(void *args); // Forward declaration for a
 SemaphoreHandle_t xGuiSemaphore;
 Xasin::Communication::EspMeshHandler g_mesh_handler;
 Xasin::Audio::TX audioManager; // Definition of the global audioManager
+Housekeeping::BatteryManager g_battery_manager;
 
 mcp23008_t main_gpio_extender = {
     .port = I2C_NUM_0,

@@ -14,22 +14,19 @@ namespace Housekeeping {
 
 class BatteryManager {
 private:
-	uint8_t cutoff_percentage;
-
 	uint16_t current_mv_var;
 
 public:
-	const uint8_t cell_count;
-	const uint32_t cutoff_voltage;
+	const uint8_t cell_count = 1; // Always 1 for 9V
+	const uint32_t cutoff_voltage = 6000; // 6V cutoff for 9V battery
 
-	bool is_charging;
+	BatteryManager(uint8_t cellCount = 1);
 
+	// Returns 0-100% for 9V battery (linear mapping)
 	uint8_t		raw_capacity_for_voltage(uint32_t millivolts);
 	uint8_t 	capacity_for_voltage(uint32_t millivolts);
 	uint32_t	voltage_for_raw_capacity(uint8_t percentage);
 	uint32_t 	voltage_for_capacity(uint8_t percentage);
-
-	BatteryManager(uint8_t cellCount = 1);
 
 	void set_voltage(uint32_t millivolts);
 

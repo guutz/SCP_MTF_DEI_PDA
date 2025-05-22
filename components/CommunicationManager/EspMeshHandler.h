@@ -55,6 +55,7 @@ public:
     void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 
 private:
+    esp_err_t apply_mesh_configuration(); // Added declaration
     // Removed static void static_mesh_event_handler and static_ip_event_handler declarations
     
     // static void mesh_task(void *arg); // Task to run mesh operations - often handled by esp_mesh_start and events
@@ -73,6 +74,9 @@ private:
     bool mesh_connected_ = false;   // True if non-root is connected to a parent, or root mesh is active/formed
     bool ip_acquired_ = false;       // True if the node has an IP address (either from mesh DHCP or external Wi-Fi for root)
 
+    // --- Add this flag to prevent multiple mesh recovery tasks ---
+    volatile bool mesh_recovery_task_running_ = false;
+
     // MQTT Handler instance
     Xasin::MQTT::Handler m_mqtt_handler_;
 
@@ -89,6 +93,7 @@ private:
 
     // Task handle (if a dedicated task is still needed, e.g. for update())
     // TaskHandle_t mesh_task_handle_ = nullptr;
+
 };
 
 } // namespace Communication

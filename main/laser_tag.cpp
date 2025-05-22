@@ -47,6 +47,7 @@ namespace LaserTagGame {
     LZR::Player* player = nullptr;
     LZRTag::Weapon::Handler* weaponHandler = nullptr;
     std::vector<LZRTag::Weapon::BaseWeapon*> weapons;
+    TaskHandle_t initPlayerTask = nullptr;
     TaskHandle_t housekeepingTask = nullptr;
     LZR::Animator* animator = nullptr; // Added
 
@@ -269,6 +270,11 @@ bool laser_tag_mode_enter(void) {
 
 // --- LZRTag mode exit/teardown ---
 void laser_tag_mode_exit(void) {
+    if (LaserTagGame::initPlayerTask) {
+        vTaskDelete(LaserTagGame::initPlayerTask);
+        LaserTagGame::initPlayerTask = nullptr;
+    }
+
     if (LaserTagGame::housekeepingTask) {
         vTaskDelete(LaserTagGame::housekeepingTask);
         LaserTagGame::housekeepingTask = nullptr;
@@ -320,7 +326,7 @@ void LaserTagGame::init() {
     // This is done because player initialization might depend on network connectivity
     // which is established by g_mesh_handler, and g_mesh_handler.start() is called
     // from wifi_init_task which runs separately.
-    xTaskCreate(LaserTagGame::init_player_task, "init_player_task", 4096, NULL, 5, NULL); // Changed: Pass NULL instead of this, and explicitly scope init_player_task
+    xTaskCreate(LaserTagGame::init_player_task, "init_player_task", 4096, NULL, 5, &initPlayerTask);
     ESP_LOGI(TAG_LASER, "Player initialization task created.");
 }
 

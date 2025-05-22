@@ -5,6 +5,7 @@
 #include "lvgl.h"
 #include "EspMeshHandler.h"
 #include "xasin/audio/ByteCassette.h" // For Xasin::Audio::TX
+#include "xasin/BatteryManager.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -13,15 +14,16 @@
 
 #define LV_TICK_PERIOD_MS 1
 
-#define WIFI_STATION_SSID "Dabney Lounge"
-#define WIFI_STATION_PASSWD "dabneyvictory"
+#define WIFI_STATION_SSID "ttbnl"
+#define WIFI_STATION_PASSWD "ttbnl1234"
 
 // --- ESP-MESH Configuration ---
 #define MESH_PASSWORD_STR "your_mesh_password" // IMPORTANT: Change to your desired mesh password (min 8 chars)
-#define MESH_CHANNEL 6 // Default channel 6, range 1-13. 0 for auto-select (not recommended for fixed root)
+#define MESH_CHANNEL 0 // Default channel 6, range 1-13. 0 for auto-select (not recommended for fixed root)
 
 extern Xasin::Communication::EspMeshHandler g_mesh_handler; // Defined in main.cpp
 extern Xasin::Audio::TX audioManager; // Defined in laser_tag.cpp or main.cpp
+extern Housekeeping::BatteryManager g_battery_manager; // Defined in main.cpp
 
 // --- MQTT Configuration ---
 #define MQTT_BROKER_URI_STR "mqtt://test.mosquitto.org" // IMPORTANT: Change to your MQTT broker URI

@@ -127,8 +127,7 @@ void PatternModeHandler::tick() {
         break;
     case LZR::CHARGE:
         modePatterns_[0].overlayColor = Xasin::NeoController::Color::HSV(120 * battery_->current_capacity() / 100.0, 200, 35);
-        if (!battery_->is_charging)
-            rgbController_->colors.fill(Xasin::NeoController::Color(Material::GREEN, 20), 1, -1);
+        rgbController_->colors.fill(Xasin::NeoController::Color(Material::GREEN, 20), 1, -1);
         break;
     case LZR::IDLE:
         modePatterns_[0].overlayColor = Xasin::NeoController::Color(0x333333);
