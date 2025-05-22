@@ -12,7 +12,6 @@
 #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 #include "esp_log.h"
 
-
 namespace Xasin {
 namespace MQTT {
 
@@ -55,15 +54,35 @@ void Handler::start(const mqtt_cfg &config) {
 	assert(!mqtt_started);
 
 	mqtt_started = true;
-	esp_log_level_set("MQTT_CLIENT", ESP_LOG_NONE);
+	esp_log_level_set("MQTT_CLIENT", ESP_LOG_DEBUG);
 
 	mqtt_cfg modConfig = config;
 
 	modConfig.event_handle = mqtt_handle_caller;
 	modConfig.user_context = this;
+	modConfig.username = "scp_mtf_dei_pda";
+	modConfig.password = "Delta-42";
+
+	ESP_LOGI(mqtt_tag, "Starting MQTT client with config: %s", config.uri);
 
 	mqtt_handle = esp_mqtt_client_init(&modConfig);
-	esp_mqtt_client_start(mqtt_handle);
+	if (mqtt_handle == NULL) {
+		ESP_LOGE(mqtt_tag, "esp_mqtt_client_init FAILED! MQTT will not start.");
+		mqtt_started = false; // Ensure this reflects the failure
+		mqtt_connected = false;
+		return; // Do not proceed to esp_mqtt_client_start
+	}
+	ESP_LOGI(mqtt_tag, "esp_mqtt_client_init successful. Starting client...");
+	esp_err_t err = esp_mqtt_client_start(mqtt_handle);
+	if (err != ESP_OK) {
+		ESP_LOGE(mqtt_tag, "esp_mqtt_client_start FAILED: %s", esp_err_to_name(err));
+		esp_mqtt_client_destroy(mqtt_handle); // Clean up
+		mqtt_handle = NULL;
+		mqtt_started = false;
+		mqtt_connected = false;
+		return;
+	}
+	ESP_LOGI(mqtt_tag, "esp_mqtt_client_start() called.");
 }
 void Handler::start(const std::string uri) {
 	mqtt_cfg config = {};

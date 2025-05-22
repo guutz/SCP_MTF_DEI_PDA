@@ -91,7 +91,7 @@ void lvgl_tick_timer_setup(void) {
 void lvgl_full_init(void) {
     lv_init();
     display_touch_init();
-    time_overlay_init();
+    // time_overlay_init();
     lvgl_tick_timer_setup();
 }
 

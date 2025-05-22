@@ -30,6 +30,7 @@ void menu_log_add(const char* tag, const char* fmt, ...) {
     if (log_buffer.size() > MENU_LOG_MAX_LINES) {
         log_buffer.erase(log_buffer.begin(), log_buffer.begin() + (log_buffer.size() - MENU_LOG_MAX_LINES));
     }
+    ESP_LOGI(tag, "%s", msg.c_str()); // Log to ESP-IDF console
 }
 
 std::vector<std::string> menu_log_get_buffer() {

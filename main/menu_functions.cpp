@@ -9,6 +9,7 @@
 #include "joystick.h"
 #include "setup.h"
 #include "cd4053b_wrapper.h"
+#include "ui_manager.h"
 
 #define TAG_MENU_FUNC "menu_func"
 
@@ -27,11 +28,13 @@ static void exit_laser_tag_mode_from_menu(lv_obj_t *obj, lv_event_t event);
 void register_menu_functions(void) {
     // Register the menu functions with the predefined function list
     G_PredefinedFunctions["OTA_UPDATE"] = trigger_ota_update_from_menu;
+    G_PredefinedFunctions["START_WIFI"] = start_wifi_from_menu;
     G_PredefinedFunctions["SHOW_WIFI_STATUS"] = show_wifi_status_from_menu;
     G_PredefinedFunctions["PLAY_SOUND"] = play_audio_file_in_background;
     G_PredefinedFunctions["TELESCOPE_CONTROL"] = open_telescope_control_modal;
     G_PredefinedFunctions["ENTER_LASER_TAG_MODE"] = enter_laser_tag_mode_from_menu;
     G_PredefinedFunctions["BATTERY_STATUS"] = show_battery_status_from_menu;
+    G_PredefinedFunctions["SHOW_RECENT_MESSAGES"] = show_recent_messages_from_menu;
 }
 
 
@@ -48,7 +51,7 @@ void handle_focus_change(lv_obj_t *obj, lv_event_t event) {
 }
 
 void show_wifi_status_from_menu(void) {
-    ESP_LOGI(TAG_MENU_FUNC, "WiFi status check triggered from menu");
+    menu_log_add(TAG_MENU_FUNC, "WiFi status check triggered from menu");
     ModalDialogParts dialog_parts = create_modal_dialog(
         "WIFI STATUS",
         "Checking WiFi status...",
@@ -181,12 +184,14 @@ ModalDialogParts create_modal_dialog(const char* title_text, const char* msg_tex
 static void close_modal_from_child(lv_obj_t *obj) {
     if (!modal_open) return; // Prevent double close
     modal_open = false;
+    menu_log_add(TAG_MENU_FUNC, "Closing modal dialog");
     ui_reinit_current_menu();
 }
 
 // Generic OK button callback for modal dialogs
 static void ok_button_cb(lv_obj_t *obj, lv_event_t event) {
     if (event == LV_EVENT_CLICKED) {
+        menu_log_add(TAG_MENU_FUNC, "OK button clicked");
         close_modal_from_child(obj);
     }
 }
@@ -194,7 +199,7 @@ static void ok_button_cb(lv_obj_t *obj, lv_event_t event) {
 // Custom predefined function to play an audio file in the background
 void play_audio_file_in_background(void) {
     const char* audio_file_path = "DEI/sounds/GameStart.raw"; // Replace with actual file path
-    ESP_LOGI(TAG_MENU_FUNC, "Playing audio file using Xasin::Audio: %s", audio_file_path);
+    menu_log_add(TAG_MENU_FUNC, "Playing audio file using Xasin::Audio: %s", audio_file_path);
 
     Xasin::Audio::bytecassette_data_t audio_data = {
         .file_path = audio_file_path,
@@ -215,11 +220,6 @@ void open_telescope_control_modal(void) {
     static char last_sent[64] = "";
     static char last_recv[128] = "";
 
-    // Allocate and initialize the controller (TeleProxy only, no double init)
-    // Add labels for last sent/received commands
-    lv_obj_t* sent_label = nullptr;
-    lv_obj_t* recv_label = nullptr;
-
     // Helper: wrap send_command and read_response to update labels
     struct TeleProxy : public TelescopeController {
         lv_obj_t* sent;
@@ -231,15 +231,7 @@ void open_telescope_control_modal(void) {
             blink_mcp_led(MCP_PIN_ETH_LED_1, 100);
             return TelescopeController::send_command(cmd, add_cr, send_delay_ms, recv_delay_ms);
         }
-        esp_err_t read_response(char* buffer, size_t buffer_len, int timeout_ms = 500) override {
-            esp_err_t ret = TelescopeController::read_response(buffer, buffer_len, timeout_ms);
-            snprintf(last_recv, sizeof(last_recv), "%s", buffer);
-            lv_label_set_text_fmt(recv, "Last recv: %s", last_recv);
-            blink_mcp_led(MCP_PIN_ETH_LED_2, 100);
-            return ret;
-        }
         void process_joystick_input(const JoystickState_t* joystick_state) override {
-            // Call base, but all send_command/read_response will go through proxy
             TelescopeController::process_joystick_input(joystick_state);
         }
     };
@@ -253,11 +245,12 @@ void open_telescope_control_modal(void) {
     );
 
     // Add labels for last sent/received commands
-    sent_label = lv_label_create(dialog.dialog, NULL);
+    lv_obj_t* sent_label = lv_label_create(dialog.dialog, NULL);
     lv_label_set_text(sent_label, "Last sent: ");
     lv_obj_add_style(sent_label, LV_OBJ_PART_MAIN, &style_default_label);
     lv_obj_align(sent_label, dialog.msg, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
-    recv_label = lv_label_create(dialog.dialog, NULL);
+
+    lv_obj_t* recv_label = lv_label_create(dialog.dialog, NULL);
     lv_label_set_text(recv_label, "Last recv: ");
     lv_obj_add_style(recv_label, LV_OBJ_PART_MAIN, &style_default_label);
     lv_obj_align(recv_label, sent_label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5);
@@ -282,6 +275,12 @@ void open_telescope_control_modal(void) {
         lv_group_add_obj(joy_group, err_dialog.btn1);
         return;
     }
+
+    // Update the response callback to update the recv_label
+    g_mesh_handler.subscribe("telescope/responses", [recv_label](const Xasin::Communication::CommReceivedData& data) {
+        snprintf(last_recv, sizeof(last_recv), "%.*s", static_cast<int>(data.payload.size()), data.payload.data());
+        lv_label_set_text_fmt(recv_label, "Last recv: %s", last_recv);
+    }, 1);
 
     // Modal close callback
     auto close_cb = [](lv_obj_t *obj, lv_event_t event) {
@@ -322,7 +321,7 @@ static void blink_mcp_led(MCP23008_NamedPin pin, uint32_t duration_ms) {
 }
 
 void trigger_ota_update_from_menu(void) {
-    ESP_LOGI(TAG_MENU_FUNC, "OTA update triggered from menu");
+    menu_log_add(TAG_MENU_FUNC, "OTA update triggered from menu");
     static lv_obj_t* ota_label = nullptr;
     // Custom close callback to mark label as invalid
     auto ota_close_cb = [](lv_obj_t *obj, lv_event_t event) {
@@ -406,7 +405,7 @@ void enter_laser_tag_mode_from_menu(void) {
 void exit_laser_tag_mode_from_menu(lv_obj_t *obj, lv_event_t event) {
     if (event != LV_EVENT_CLICKED) return; // Only handle click event
     laser_tag_mode_exit();
-    ESP_LOGI(TAG_MENU_FUNC, "Laser tag mode exited.");
+    menu_log_add(TAG_MENU_FUNC, "Laser tag mode exited.");
     ok_button_cb(obj, event);
 }
 
@@ -435,4 +434,29 @@ void show_battery_status_from_menu(void) {
     lv_group_t* joy_group = lvgl_joystick_get_group();
     if (dialog.btn1) lv_group_add_obj(joy_group, dialog.btn1);
     lv_group_focus_obj(dialog.btn1);
+}
+
+void show_recent_messages_from_menu(void) {
+    menu_log_add(TAG_MENU_FUNC, "Displaying recent messages from menu");
+
+    // Retrieve recent messages from the log buffer
+    std::string recent_messages = get_menu_log_as_string();
+
+    // Use the create_text_display_screen_impl function to display the messages
+    lv_obj_t* screen = create_text_display_screen_impl(
+        "Recent Messages", // Title of the screen
+        recent_messages,    // Content to display
+        false,              // Content is not a file
+        "Main Menu"         // Invoking parent menu name
+    );
+
+    // Load the created screen
+    lv_scr_load(screen);
+}
+
+void start_wifi_from_menu(void) {
+    menu_log_add(TAG_MENU_FUNC, "Starting WiFi from menu");    
+
+    // Start the WiFi process
+    xTaskNotify(g_wifi_init_task_handle, 0, eSetBits);
 }

@@ -195,7 +195,7 @@ void Handler::start_thread() {
 	if (process_task != 0)
 		return;
 
-	xTaskCreate(handler_start_thread_func, "LZR::WPN", 4096, this, 10, &process_task);
+	xTaskCreate(handler_start_thread_func, "LZR::WPN", 4096, this, 5, &process_task);
 }
 
 void Handler::update_btn(bool new_button_state) {

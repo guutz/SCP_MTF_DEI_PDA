@@ -38,9 +38,6 @@ static lv_obj_t* create_dynamic_menu_screen_wrapper(void);
 static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* definition, const std::string& actual_invoking_parent_name);
 // Wrapper for text screens
 static lv_obj_t* text_screen_creator_wrapper(void);
-// Implementation for text display screens
-static lv_obj_t* create_text_display_screen_impl(const std::string& title, const std::string& content, bool is_file, const std::string& actual_invoking_parent_name);
-
 
 // --- LVGL Task Callback for initial splash timeout ---
 static void initial_splash_timeout_cb(lv_task_t *task);
@@ -48,8 +45,6 @@ static void initial_splash_timeout_cb(lv_task_t *task);
 // --- Event handler for dynamically created buttons ---
 static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event);
 
-// Forward declaration for OTA function from ota_manager.cpp
-void trigger_ota_update(void);
 
 void play_audio_file_in_background(void);
 
@@ -150,7 +145,7 @@ void ui_init(lv_task_t *current_init_task) {
     lv_obj_t *splash_screen_obj = create_splash_screen();
     lv_disp_load_scr(splash_screen_obj);
 
-    lv_task_t *transition_task = lv_task_create(initial_splash_timeout_cb, 3000, LV_TASK_PRIO_MID, NULL);
+    lv_task_t *transition_task = lv_task_create(initial_splash_timeout_cb, 1000, LV_TASK_PRIO_MID, NULL);
     lv_task_once(transition_task);
 }
 
@@ -428,7 +423,7 @@ static lv_obj_t* text_screen_creator_wrapper(void) {
     return create_text_display_screen_impl(G_TextScreenTitle, G_TextScreenContent, G_TextScreenIsFilePath, G_InvokingParentMenuName);
 }
 
-static lv_obj_t* create_text_display_screen_impl(const std::string& title, const std::string& content, bool is_file, const std::string& actual_invoking_parent_name) {
+lv_obj_t* create_text_display_screen_impl(const std::string& title, const std::string& content, bool is_file, const std::string& actual_invoking_parent_name) {
     ESP_LOGI(TAG_UI_MGR, "Creating text screen: '%s'. Invoked by: '%s'", title.c_str(), actual_invoking_parent_name.c_str());
 
     lv_obj_t *screen = lv_obj_create(NULL, NULL);
@@ -513,7 +508,7 @@ void ui_reinit_current_menu(void) {
     ESP_LOGI(TAG_UI_MGR, "Reinitializing current menu: '%s'", G_TargetMenuNameForCreation.c_str());
     auto it = G_MenuScreens.find(G_TargetMenuNameForCreation);
     if (it != G_MenuScreens.end()) {
-        ui_load_active_target_screen(LV_SCR_LOAD_ANIM_NONE, 500, 0, true, create_dynamic_menu_screen_wrapper);
+        ui_load_active_target_screen(LV_SCR_LOAD_ANIM_NONE, 100, 0, true, create_dynamic_menu_screen_wrapper);
     } else {
         ESP_LOGE(TAG_UI_MGR, "Cannot reinitialize. Current target menu '%s' not found.", G_TargetMenuNameForCreation.c_str());
     }

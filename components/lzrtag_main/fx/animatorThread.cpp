@@ -130,9 +130,9 @@ void Animator::start_animation_task() {
     xTaskCreatePinnedToCore(
         Animator::animation_task_entry, // Static entry function
         "AnimatorTask",               // Task name
-        4 * 1024,                       // Stack size
+        4096,                       // Stack size
         this,                           // Parameter (pointer to this instance)
-        10,                             // Priority
+        5,                             // Priority
         &animation_task_handle_,        // Task handle
         1                               // Core ID
     );
@@ -158,6 +158,8 @@ void Animator::animation_task_runner() {
     while (true) {
         if (!player_ || !weapon_handler_ || !weapons_ || !rgb_controller_ || !battery_ || !main_weapon_status_) {
             ESP_LOGE("Animator", "Core dependency missing in task runner!");
+            ESP_LOGE("Animator", "Missing player: %p, weapon_handler: %p, weapons: %p, rgb_controller: %p, battery: %p, main_weapon_status: %p",
+                     player_, weapon_handler_, weapons_, rgb_controller_, battery_, main_weapon_status_);
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }

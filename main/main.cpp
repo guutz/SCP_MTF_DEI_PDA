@@ -7,6 +7,7 @@
 #include "menu_structures.h"
 #include "ota_manager.h"
 #include "sd_manager.h"
+#include "menu_log.h"
 #include "setup.h"
 
 #include "ui_manager.h"
@@ -72,6 +73,7 @@
 static const char *TAG_MAIN = "main";
 static void lvglTask(void *pvParameter);
 static void wifi_init_task(void *pvParameter); 
+TaskHandle_t g_wifi_init_task_handle = nullptr; // Global handle for Wi-Fi task
 static void initTask(void *pvParameter);
 static void peripheralsTask(void *pvParameter);
 static void audio_core_processing_task(void *args); // Forward declaration for audio task
@@ -94,7 +96,7 @@ extern "C" void app_main(void) {
     // tcpip_adapter_init(); // Removed: Handled by EspMeshHandler or underlying ESP-IDF mesh init
     // esp_event_loop_init(event_handler, 0); // Removed: Event handling is part of EspMeshHandler
 
-    ESP_LOGI(TAG_MAIN, "Creating Init Task.");
+    menu_log_add(TAG_MAIN, "Creating Init Task.");
     xTaskCreatePinnedToCore(initTask, "init", 4096, NULL, 10, NULL, 0);
 }
 
@@ -116,43 +118,43 @@ static void initTask(void *pvParameter) {
 
     lvgl_full_init();
 
-    ESP_LOGI(TAG_MAIN, "[InitTask] Initializing I2C manager.");
+    menu_log_add(TAG_MAIN, "[InitTask] Initializing I2C manager.");
     ESP_ERROR_CHECK(i2c_manager_init(I2C_NUM_0));
-    ESP_LOGI(TAG_MAIN, "[InitTask] Initializing main MCP23008 wrapper.");
+    menu_log_add(TAG_MAIN, "[InitTask] Initializing main MCP23008 wrapper.");
     ESP_ERROR_CHECK(mcp23008_wrapper_init(&main_gpio_extender));
 
-    ESP_LOGI(TAG_MAIN, "[InitTask] Initializing main mux switch (CD4053B) paths.");
+    menu_log_add(TAG_MAIN, "[InitTask] Initializing main mux switch (CD4053B) paths.");
     cd4053b_select_main_path(&main_gpio_extender, MAIN_MUX_S2_PATH_B0_ACCESSORY_A);
     cd4053b_select_main_path(&main_gpio_extender, MAIN_MUX_S1_PATH_A0_JOYSTICK_AXIS1);
     cd4053b_select_main_path(&main_gpio_extender, MAIN_MUX_S3_PATH_C0_JOYSTICK_AXIS2);
 
-    ESP_LOGI(TAG_MAIN, "[InitTask] Initializing Joystick and ADC.");
+    menu_log_add(TAG_MAIN, "[InitTask] Initializing Joystick and ADC.");
     ESP_ERROR_CHECK(joystick_init());
 
-    ESP_LOGI(TAG_MAIN, "[InitTask] Initializing LVGL Joystick Input.");
+    menu_log_add(TAG_MAIN, "[InitTask] Initializing LVGL Joystick Input.");
     lvgl_joystick_input_init(&main_gpio_extender); // Add joystick LVGL init here
 
-    ESP_LOGI(TAG_MAIN, "[InitTask] Initializing Audio System.");
+    menu_log_add(TAG_MAIN, "[InitTask] Initializing Audio System.");
     TaskHandle_t audioProcessingTaskHandle = nullptr; // Local handle for init
     // xTaskCreate(audio_core_processing_task, "AudioLargeStack", 32768, nullptr, 5, &audioProcessingTaskHandle);
     // audioManager.init(audioProcessingTaskHandle); 
     // audioManager.volume_mod = 160; 
-    ESP_LOGI(TAG_MAIN, "[InitTask] Audio system initialized.");
+    menu_log_add(TAG_MAIN, "[InitTask] Audio system initialized.");
 
     // Schedule SD card and UI init as LVGL tasks
-    ESP_LOGI(TAG_MAIN, "[InitTask] Scheduling SD card initialization as LVGL task.");
+    menu_log_add(TAG_MAIN, "[InitTask] Scheduling SD card initialization as LVGL task.");
     lv_task_t* sd_init_task = lv_task_create(sd_init, 0, LV_TASK_PRIO_MID, NULL);
     lv_task_once(sd_init_task);
 
-    ESP_LOGI(TAG_MAIN, "[InitTask] Scheduling UI init as LVGL task.");
+    menu_log_add(TAG_MAIN, "[InitTask] Scheduling UI init as LVGL task.");
     lv_task_t* ui_init_task = lv_task_create(ui_init, 500, LV_TASK_PRIO_MID, NULL);
     lv_task_once(ui_init_task);
 
-    ESP_LOGI(TAG_MAIN, "[InitTask] Starting GUI tasks.");
+    menu_log_add(TAG_MAIN, "[InitTask] Starting GUI tasks.");
     // xTaskCreatePinnedToCore(peripheralsTask, "peripherals", 1024 * 2, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 8, NULL, 5, NULL, 1);
 
-    ESP_LOGI(TAG_MAIN, "[InitTask] Initialization complete. Deleting self.");
+    menu_log_add(TAG_MAIN, "[InitTask] Initialization complete. Deleting self.");
     vTaskDelete(NULL);
 }
 
@@ -167,10 +169,12 @@ static void audio_core_processing_task(void *args) {
 
 static void wifi_init_task(void *pvParameter) {
     (void)pvParameter;
-    // ESP_LOGI(TAG_MAIN, "Wi-Fi/Mesh init task started, waiting for 3 seconds...");
+    // menu_log_add(TAG_MAIN, "Wi-Fi/Mesh init task started, waiting for 3 seconds...");
     // vTaskDelay(pdMS_TO_TICKS(3000)); // Wait for 3 seconds
 
-    ESP_LOGI(TAG_MAIN, "Configuring and starting ESP-MESH handler...");
+    xTaskNotifyWait(0, 0, nullptr, portMAX_DELAY); // Wait for notification from initTask
+
+    menu_log_add(TAG_MAIN, "Configuring and starting ESP-MESH handler...");
     
     Xasin::Communication::EspMeshHandler::EspMeshHandlerConfig mesh_config;
     mesh_config.wifi_ssid = WIFI_STATION_SSID;
@@ -183,7 +187,7 @@ static void wifi_init_task(void *pvParameter) {
 
     g_mesh_handler.start(&mesh_config);
 
-    ESP_LOGI(TAG_MAIN, "Wi-Fi/Mesh init task finished, deleting self.");
+    menu_log_add(TAG_MAIN, "Wi-Fi/Mesh init task finished, deleting self.");
     vTaskDelete(NULL);
 }
 
@@ -197,7 +201,7 @@ static void peripheralsTask(void *pvParameter) {
         // Read Joystick State
         esp_err_t joy_ret = joystick_read_state(&main_gpio_extender, &current_joystick_state);
         if (joy_ret == ESP_OK) {
-            // ESP_LOGI(TAG_MAIN, "Joystick: X=%d, Y=%d, Btn=%s", 
+            // menu_log_add(TAG_MAIN, "Joystick: X=%d, Y=%d, Btn=%s", 
             //          current_joystick_state.x, 
             //          current_joystick_state.y, 
             //          current_joystick_state.button_pressed ? "Pressed" : "Released");

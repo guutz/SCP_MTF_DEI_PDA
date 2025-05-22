@@ -64,7 +64,7 @@ namespace LaserTagGame {
 
 void gun_mux_switch_init(void) {
     if (mcp23008_check_present(&gun_gpio_extender) == ESP_OK) {
-        ESP_LOGI(TAG_LASER, "Gun MCP23008 detected at 0x21. Initializing...");
+        ESP_LOGI(TAG_LASER, "Gun MCP23008 detected at 0x27. Initializing...");
         ESP_ERROR_CHECK(mcp23008_wrapper_init_with_defaults(&gun_gpio_extender, MCP23008_2_DEFAULT_IODIR, MCP23008_2_DEFAULT_GPPU));
         ESP_LOGI(TAG_LASER, "Initializing gun mux switch (CD4053B) paths.");
         cd4053b_select_gun_path(&gun_gpio_extender, GUN_MUX_S2_PATH_B0_IR_RX);
@@ -72,7 +72,7 @@ void gun_mux_switch_init(void) {
         cd4053b_select_gun_path(&gun_gpio_extender, GUN_MUX_S3_PATH_C0_IR_TX);
         ESP_ERROR_CHECK(mcp23008_wrapper_set_pin_direction(&gun_gpio_extender, (MCP23008_NamedPin)MCP2_PIN_HAPTIC_MOTOR, MCP_PIN_DIR_OUTPUT));
     } else {
-        ESP_LOGW(TAG_LASER, "Gun MCP23008 not detected at 0x21. Skipping init.");
+        ESP_LOGW(TAG_LASER, "Gun MCP23008 not detected at 0x27. Skipping init.");
     }
 }
 
@@ -83,9 +83,7 @@ static void housekeeping_thread(void* args) {
     while (true) {
         if (xTaskGetTickCount() >= nextHWTick) {
             
-            if (g_mesh_handler.isConnected()) { 
-                LaserTagGame::send_ping_req_internal();
-            }
+            LaserTagGame::send_ping_req_internal();
             nextHWTick += pingIntervalTicks;
         }
         
@@ -140,7 +138,7 @@ static void LaserTagGame::send_ping_req_internal() {
 	uint32_t outData = xTaskGetTickCount();
     
 	g_mesh_handler.publish("ping_signal", &outData, sizeof(outData), false, 0);
-    ESP_LOGD(TAG_LASER, "Ping request sent via g_mesh_handler.");
+    ESP_LOGI(TAG_LASER, "Ping request sent via g_mesh_handler.");
 }
 
 void LaserTagGame::setup_ping_handling() {
@@ -251,7 +249,7 @@ bool laser_tag_mode_enter(void) {
     
     // Housekeeping task (now includes ping logic)
     if (!LaserTagGame::housekeepingTask) { // Create only if not already running
-        xTaskCreate(housekeeping_thread, "Housekeeping", 3*1024, nullptr, 10, &LaserTagGame::housekeepingTask);
+        xTaskCreate(housekeeping_thread, "Housekeeping", 4096, nullptr, 5, &LaserTagGame::housekeepingTask);
     }
 
     LaserTagGame::main_weapon_status = LZRTag_WPN_STAT_NOMINAL; // Set status after setup
@@ -300,11 +298,11 @@ void LaserTagGame::init_player_task(void *param) {
     ESP_LOGI(TAG_LASER, "Player initialization task started.");
 
     // Wait for the mesh handler to be started
-    while (!g_mesh_handler.isConnected()) {
-        ESP_LOGI(TAG_LASER, "Waiting for EspMeshHandler to connect...");
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-    ESP_LOGI(TAG_LASER, "EspMeshHandler is connected. Initializing player.");
+    // while (!g_mesh_handler.isConnected()) {
+    //     ESP_LOGI(TAG_LASER, "Waiting for EspMeshHandler to connect...");
+    //     vTaskDelay(pdMS_TO_TICKS(1000));
+    // }
+    // ESP_LOGI(TAG_LASER, "EspMeshHandler is connected. Initializing player.");
 
     // Use g_device_id instead of hardcoded "0"
     LaserTagGame::player = new LZR::Player(g_device_id.c_str(), g_mesh_handler);

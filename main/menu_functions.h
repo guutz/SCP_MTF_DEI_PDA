@@ -46,6 +46,9 @@ void register_menu_functions(void);
  */
 void trigger_ota_update_from_menu(void);
 
+
+void start_wifi_from_menu(void);
+
 /**
  * @brief Display WiFi status information
  * Shows current WiFi connection status, IP address, and signal strength
@@ -70,5 +73,7 @@ void open_telescope_control_modal(void);
  * @brief Show battery status in a modal dialog and update the global BatteryManager.
  */
 void show_battery_status_from_menu(void);
+
+void show_recent_messages_from_menu(void);
 
 #endif

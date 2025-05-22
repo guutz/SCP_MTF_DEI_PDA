@@ -46,4 +46,6 @@ void ui_load_active_target_screen(lv_scr_load_anim_t anim_type,
 
 void ui_reinit_current_menu(void);
 
+lv_obj_t* create_text_display_screen_impl(const std::string& title, const std::string& content, bool is_file, const std::string& actual_invoking_parent_name);
+
 #endif // UI_MANAGER_H

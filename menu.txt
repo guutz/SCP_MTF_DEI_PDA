@@ -1,0 +1,76 @@
+# Ditch Day Activity Screens (Accessed via SecureCommsMenu)
+
+SCREEN: OrientationDebrief TITLE: Orientation/Debrief
+PARENT_MENU: SecureCommsMenu
+TEXT: Greetings MTF Delta-42. Today is the 23 of May 2025. This is a message directly from the O5 Council. Head to Schlinger room 101 immediately to discuss your previous and future missions.
+BUTTON: Back:BACK
+ENDSCREEN
+
+SCREEN: EquipmentMaking TITLE: Equipment Making
+PARENT_MENU: SecureCommsMenu
+TEXT: Now that you have met with the O5 Council, it is time to gear up for the day. Go to the armory at room in the Moore Instructional Lab to get your gear.
+BUTTON: Back:BACK
+ENDSCREEN
+
+SCREEN: Drills TITLE: Drills
+PARENT_MENU: SecureCommsMenu
+TEXT: With your gear acquired, it is time to practice and hone your skill. Head to the training course on Beckman Mall for drills.
+BUTTON: Back:BACK
+ENDSCREEN
+
+SCREEN: SatellitePuzzle TITLE: Satellite Dish Puzzle
+PARENT_MENU: SecureCommsMenu
+TEXT: Delta-42, your presence is being requested on the Moore Roof. I have gotten some strange results from the satellite and I would like some protection just in case there is anomalous interference.
+TEXT: -Dr. Nocturne
+BUTTON: Access Telescope Array:FUNC:TELESCOPE_CONTROL # <-- NEW BUTTON HERE
+BUTTON: Back:BACK
+ENDSCREEN
+
+SCREEN: LoreBuildingExercise TITLE: Lore Building Exercise
+PARENT_MENU: SecureCommsMenu
+TEXT: With the weird results from the satellite dish, we have decided to do some research into what might be happening, as well as some other anomalies that might be relevant to the matter at hand. The best place to do research is the [INSERT ROOM HERE]
+BUTTON: Back:BACK
+ENDSCREEN
+
+SCREEN: Lunch TITLE: Lunch
+PARENT_MENU: SecureCommsMenu
+TEXT: After a tough morning and some weird results from the satellite, it’s time to get lunch. Head to Tournament Park for lunch and to communicate with other MTF squads.
+BUTTON: Back:BACK
+ENDSCREEN
+
+SCREEN: LimitedCommPuzzle TITLE: Limited Communication Puzzle
+PARENT_MENU: SecureCommsMenu
+TEXT: Delta-42, I need you to come to the Music House immediately! SCP-5031 has notified me that it needs to speak with you, urgently. It wouldn’t tell me why, but I haven’t seen it behave like this since I was first assigned to its case. I can only assume that this is something very important.
+TEXT: -Senior Researcher Stanley Huxtable
+BUTTON: Back:BACK
+ENDSCREEN
+
+SCREEN: HackingArchives1 TITLE: Hacking the Archives 1
+PARENT_MENU: SecureCommsMenu
+TEXT: With the information given to us by SCP-5031, we now know that we need to go to the Archives. However, the Archives are protected by a memetic kill agent, and we need to protect ourselves. SCP-5031 has told us that it has overheard researchers say that protection from the memetic kill agent can be found in Spectre Library.
+BUTTON: Back:BACK
+ENDSCREEN
+
+SCREEN: HackingArchives2 TITLE: Hacking the Archives 2
+PARENT_MENU: SecureCommsMenu
+TEXT: Now that we have the protection, it’s time to go to the Archives in the South Mudd Server Room. Hopefully we’ll be able to find out what’s going on there, and, that what we found in Spectre Library will protect us.
+BUTTON: Back:BACK
+ENDSCREEN
+
+SCREEN: AgainstTheAnomaly TITLE: Going against the Anomaly
+PARENT_MENU: SecureCommsMenu
+TEXT: We were wrong the whole time. We thought we contained the Anomaly, but it’s a powerful reality bender that warped reality around us and messed with our memories. Who knows how much of this is real. But what matters is, the Anomaly is not contained, and that must be remedied. The information we got from the Archives tell us that we might be able to find a physical manifestation of THE Entity at 204 Dabney Hall.
+BUTTON: Back:BACK
+ENDSCREEN
+
+SCREEN: ContainmentBreach TITLE: Containment Breach
+PARENT_MENU: SecureCommsMenu
+TEXT: EMERGENCY! CONTAINMENT BREACH! EMERGENCY! CONTAINMENT BREACH! EMERGENCY! CONTAINMENT BREACH! ALL MTF SQUADS TO THE INFINITE STORAGE ROOM TO CONTAIN THE BREACHED ANOMALIES!
+BUTTON: Back:BACK
+ENDSCREEN
+
+SCREEN: WrapUpScreen TITLE: Wrap-up
+PARENT_MENU: SecureCommsMenu
+TEXT: Greetings MTF Delta-42. Today is the 23 of May 2025. This is a message directly from the O5 Council. Head to Schlinger room 101 immediately to discuss your previous and future missions.
+BUTTON: Back:BACK
+ENDSCREEN
