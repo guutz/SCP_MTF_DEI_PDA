@@ -112,6 +112,8 @@ static void initTask(void *pvParameter) {
 
     power_config();
 
+    xTaskCreatePinnedToCore(wifi_init_task, "wifi_init", 4096*2, NULL, 5, NULL, 0);
+
     lvgl_full_init();
 
     ESP_LOGI(TAG_MAIN, "[InitTask] Initializing I2C manager.");
@@ -132,9 +134,9 @@ static void initTask(void *pvParameter) {
 
     ESP_LOGI(TAG_MAIN, "[InitTask] Initializing Audio System.");
     TaskHandle_t audioProcessingTaskHandle = nullptr; // Local handle for init
-    xTaskCreate(audio_core_processing_task, "AudioLargeStack", 32768, nullptr, 5, &audioProcessingTaskHandle);
-    audioManager.init(audioProcessingTaskHandle); 
-    audioManager.volume_mod = 160; 
+    // xTaskCreate(audio_core_processing_task, "AudioLargeStack", 32768, nullptr, 5, &audioProcessingTaskHandle);
+    // audioManager.init(audioProcessingTaskHandle); 
+    // audioManager.volume_mod = 160; 
     ESP_LOGI(TAG_MAIN, "[InitTask] Audio system initialized.");
 
     // Schedule SD card and UI init as LVGL tasks
@@ -146,8 +148,7 @@ static void initTask(void *pvParameter) {
     lv_task_t* ui_init_task = lv_task_create(ui_init, 500, LV_TASK_PRIO_MID, NULL);
     lv_task_once(ui_init_task);
 
-    ESP_LOGI(TAG_MAIN, "[InitTask] Starting Wi-Fi/Mesh, peripherals, and GUI tasks.");
-    xTaskCreatePinnedToCore(wifi_init_task, "wifi_init", 4096*2, NULL, 5, NULL, 0); // Increased stack for mesh
+    ESP_LOGI(TAG_MAIN, "[InitTask] Starting GUI tasks.");
     // xTaskCreatePinnedToCore(peripheralsTask, "peripherals", 1024 * 2, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(lvglTask, "gui", 1024 * 8, NULL, 5, NULL, 1);
 
@@ -166,8 +167,8 @@ static void audio_core_processing_task(void *args) {
 
 static void wifi_init_task(void *pvParameter) {
     (void)pvParameter;
-    ESP_LOGI(TAG_MAIN, "Wi-Fi/Mesh init task started, waiting for 3 seconds...");
-    vTaskDelay(pdMS_TO_TICKS(3000)); // Wait for 3 seconds
+    // ESP_LOGI(TAG_MAIN, "Wi-Fi/Mesh init task started, waiting for 3 seconds...");
+    // vTaskDelay(pdMS_TO_TICKS(3000)); // Wait for 3 seconds
 
     ESP_LOGI(TAG_MAIN, "Configuring and starting ESP-MESH handler...");
     

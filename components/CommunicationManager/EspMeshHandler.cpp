@@ -142,142 +142,128 @@ void EspMeshHandler::stop() {
 }
 
 void EspMeshHandler::initialize_mesh_and_wifi() {
-    ESP_LOGI(MESH_TAG, "Initializing Network Stack, Wi-Fi, and ESP-MESH...");
+    ESP_LOGI(MESH_TAG, "Initializing Network Stack, Wi-Fi, and ESP-MESH (Standard STA Netif Approach)...");
 
-    // Memory checks before initialization
+    // Memory checks
     size_t largest_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-    ESP_LOGI(MESH_TAG, "Largest free memory block: %zu bytes", largest_free_block);
-
+    ESP_LOGI(MESH_TAG, "Initial largest free memory block: %zu bytes", largest_free_block);
     bool heap_integrity = heap_caps_check_integrity_all(true);
-    ESP_LOGI(MESH_TAG, "Heap integrity check: %s", heap_integrity ? "PASSED" : "FAILED");
+    ESP_LOGI(MESH_TAG, "Initial heap integrity check: %s", heap_integrity ? "PASSED" : "FAILED");
 
-    // 1. Initialize NVS (ensure it's done once globally, typically in app_main)
-    esp_err_t ret = nvs_flash_init(); //
+    // 1. Initialize NVS
+    esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_LOGI(MESH_TAG, "NVS: Erasing and reinitializing.");
         ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init(); //
+        ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
 
     // 2. Initialize TCP/IP stack and default event loop
     ESP_LOGI(MESH_TAG, "Initializing netif and event loop.");
-    ret = esp_netif_init(); //
-    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(MESH_TAG, "esp_netif_init failed: %s", esp_err_to_name(ret));
-        ESP_ERROR_CHECK(ret);
-    }
-    ret = esp_event_loop_create_default(); //
-    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(MESH_TAG, "esp_event_loop_create_default failed: %s", esp_err_to_name(ret));
-        ESP_ERROR_CHECK(ret);
-    }
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+    // **** Using standard IDF API for the default STA netif ****
+    ESP_LOGI(MESH_TAG, "Creating default Wi-Fi STA netif...");
+    esp_netif_t *default_sta_netif = esp_netif_create_default_wifi_sta();
+    assert(default_sta_netif); 
 
     // 3. Initialize Wi-Fi Core
     ESP_LOGI(MESH_TAG, "Initializing Wi-Fi core.");
-    wifi_init_config_t wifi_init_cfg = WIFI_INIT_CONFIG_DEFAULT(); //
-    ESP_ERROR_CHECK(esp_wifi_init(&wifi_init_cfg)); //
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM)); //
+    wifi_init_config_t wifi_init_cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&wifi_init_cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+
+    ESP_LOGI(MESH_TAG, "Setting Wi-Fi mode to STA.");
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 
     // 4. Register event handlers
-    ESP_LOGI(MESH_TAG, "Registering event handlers.");
+    ESP_LOGI(MESH_TAG, "Registering EspMeshHandler event handlers.");
     ESP_ERROR_CHECK(esp_event_handler_instance_register(MESH_EVENT,
                                                         ESP_EVENT_ANY_ID,
                                                         &static_mesh_event_handler_adapter,
                                                         this,
-                                                        &mesh_event_instance_)); //
+                                                        &mesh_event_instance_));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
                                                         ESP_EVENT_ANY_ID,
                                                         &static_ip_event_handler_adapter,
                                                         this,
-                                                        &ip_event_instance_)); //
+                                                        &ip_event_instance_));
 
     // 5. Start Wi-Fi Subsystem
     ESP_LOGI(MESH_TAG, "Starting Wi-Fi subsystem.");
-    ESP_ERROR_CHECK(esp_wifi_start()); //
+    ESP_ERROR_CHECK(esp_wifi_start());
 
-    // 6. Initialize mesh_netif layer (from mesh_netif.c)
-    // This should come after esp_wifi_start() as esp_netif_attach_wifi_station (called within mesh_netifs_init)
-    // works best with an active Wi-Fi stack.
-    ESP_LOGI(MESH_TAG, "Initializing mesh netifs.");
-    ESP_ERROR_CHECK(mesh_netifs_init(nullptr)); //
+    // **** mesh_netifs_init(nullptr) is NOT called here. ****
 
-    // 7. Initialize ESP-MESH Core
-    // This must come after esp_wifi_start().
+    // 6. Initialize ESP-MESH Core
     ESP_LOGI(MESH_TAG, "Initializing ESP-MESH internal.");
-    ESP_ERROR_CHECK(esp_mesh_init()); //
+    ESP_ERROR_CHECK(esp_mesh_init()); 
 
-    // 8. Configure ESP-MESH
-    esp_err_t config_err = apply_mesh_configuration(); //
-    ESP_ERROR_CHECK(config_err); // Abort if initial configuration fails
+    // 7. Configure ESP-MESH
+    ESP_LOGI(MESH_TAG, "Applying ESP-MESH configuration.");
+    esp_err_t config_err = apply_mesh_configuration(); 
+    ESP_ERROR_CHECK(config_err);
 
-    // 9. Start ESP-MESH Network Operation
-    ESP_LOGI(MESH_TAG, "Starting ESP-MESH stack operation."); //
-    while (true) { // Loop indefinitely until mesh starts //
-        // Memory checks before each attempt to start mesh
+    // 8. Start ESP-MESH Network Operation
+    ESP_LOGI(MESH_TAG, "Attempting to start ESP-MESH stack operation.");
+    while (true) {
+        // ... (retry loop as provided in the previous good version, including esp_wifi_start after deinit) ...
         largest_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-        ESP_LOGI(MESH_TAG, "[Retry] Largest free memory block: %zu bytes", largest_free_block); //
-
+        ESP_LOGI(MESH_TAG, "[Retry Check] Largest free memory block: %zu bytes", largest_free_block);
         heap_integrity = heap_caps_check_integrity_all(true);
-        ESP_LOGI(MESH_TAG, "[Retry] Heap integrity check: %s", heap_integrity ? "PASSED" : "FAILED"); //
+        ESP_LOGI(MESH_TAG, "[Retry Check] Heap integrity check: %s", heap_integrity ? "PASSED" : "FAILED");
 
-        esp_err_t mesh_start_ret = esp_mesh_start(); //
+        esp_err_t mesh_start_ret = esp_mesh_start();
         if (mesh_start_ret == ESP_OK) {
-            ESP_LOGI(MESH_TAG, "ESP-MESH started successfully. Waiting for mesh events."); //
-            // Optional: Set mesh power-saving mode if needed
-            // ESP_ERROR_CHECK(esp_mesh_set_ps(MESH_PS_NONE)); // Or MESH_PS_MANUAL, MESH_PS_AUTO
-            return; // Successfully started and initialized mesh related parts
+            ESP_LOGI(MESH_TAG, "ESP-MESH started successfully! Waiting for mesh events.");
+            return; 
         } else {
             ESP_LOGE(MESH_TAG, "esp_mesh_start() failed with error 0x%x (%s).",
-                     mesh_start_ret, esp_err_to_name(mesh_start_ret)); //
+                     mesh_start_ret, esp_err_to_name(mesh_start_ret));
 
             bool reconfig_needed = false;
-            bool wifi_needs_restart_after_deinit = false;
 
-            if (mesh_start_ret == ESP_ERR_MESH_NOT_INIT) {
-                ESP_LOGW(MESH_TAG, "Mesh reported as not initialized. Attempting to de-init and re-init."); //
-                esp_err_t deinit_err = esp_mesh_deinit(); //
-                if (deinit_err != ESP_OK && deinit_err != ESP_ERR_INVALID_STATE) { // ESP_ERR_INVALID_STATE if not inited //
-                     ESP_LOGW(MESH_TAG, "esp_mesh_deinit() before re-init failed unexpectedly: %s", esp_err_to_name(deinit_err)); //
+            if (mesh_start_ret == ESP_ERR_MESH_NOT_INIT || mesh_start_ret == ESP_FAIL) {
+                ESP_LOGW(MESH_TAG, "Mesh start failed significantly. Attempting to de-init and re-init sequence.");
+                esp_err_t deinit_err = esp_mesh_deinit(); 
+                if (deinit_err != ESP_OK && deinit_err != ESP_ERR_INVALID_STATE) {
+                     ESP_LOGW(MESH_TAG, "esp_mesh_deinit() failed unexpectedly: %s", esp_err_to_name(deinit_err));
                 }
-                wifi_needs_restart_after_deinit = true; // Mark that Wi-Fi needs to be restarted as esp_mesh_deinit stops it.
 
-                // Attempt to restart Wi-Fi if it was stopped by esp_mesh_deinit
                 ESP_LOGI(MESH_TAG, "Attempting to restart Wi-Fi after mesh de-initialization.");
-                esp_err_t wifi_start_again_err = esp_wifi_start();
+                esp_err_t wifi_start_again_err = esp_wifi_start(); 
                 if (wifi_start_again_err != ESP_OK) {
-                    ESP_LOGE(MESH_TAG, "Failed to restart Wi-Fi after mesh de-init: %s. Retrying full sequence.", esp_err_to_name(wifi_start_again_err));
-                    vTaskDelay(pdMS_TO_TICKS(1000)); // Delay before full retry
-                    continue; // Retry the entire while loop
+                    ESP_LOGE(MESH_TAG, "Failed to restart Wi-Fi after mesh de-init: %s. Retrying.", esp_err_to_name(wifi_start_again_err));
+                    vTaskDelay(pdMS_TO_TICKS(2000));
+                    continue; 
                 }
 
-                esp_err_t reinit_ret = esp_mesh_init(); //
+                ESP_LOGI(MESH_TAG, "Re-initializing ESP-MESH internal.");
+                esp_err_t reinit_ret = esp_mesh_init();
                 if (reinit_ret == ESP_OK) {
-                    ESP_LOGI(MESH_TAG, "esp_mesh_init() re-called successfully."); //
-                    reconfig_needed = true; // Must reconfigure after re-init //
+                    ESP_LOGI(MESH_TAG, "esp_mesh_init() re-called successfully.");
+                    reconfig_needed = true;
                 } else {
-                    ESP_LOGE(MESH_TAG, "Re-calling esp_mesh_init() failed with error 0x%x (%s).",
-                             reinit_ret, esp_err_to_name(reinit_ret)); //
-                    // Continue to retry esp_mesh_start after delay
+                    ESP_LOGE(MESH_TAG, "Re-calling esp_mesh_init() failed: 0x%x (%s).", reinit_ret, esp_err_to_name(reinit_ret));
                 }
             } else if (mesh_start_ret == ESP_ERR_MESH_NOT_CONFIG) {
-                ESP_LOGW(MESH_TAG, "Mesh reported as not configured. Attempting to re-configure."); //
+                ESP_LOGW(MESH_TAG, "Mesh reported as not configured. Attempting to re-configure.");
                 reconfig_needed = true;
             }
-            // Add handling for other specific errors from esp_mesh_start() if necessary
 
             if (reconfig_needed) {
-                esp_err_t apply_cfg_err = apply_mesh_configuration(); //
+                ESP_LOGI(MESH_TAG, "Re-applying ESP-MESH configuration.");
+                esp_err_t apply_cfg_err = apply_mesh_configuration();
                 if (apply_cfg_err == ESP_OK) {
-                    ESP_LOGI(MESH_TAG, "ESP-MESH re-configuration applied successfully."); //
+                    ESP_LOGI(MESH_TAG, "ESP-MESH re-configuration applied successfully.");
                 } else {
-                    ESP_LOGE(MESH_TAG, "Failed to re-apply ESP-MESH configuration: %s.", esp_err_to_name(apply_cfg_err)); //
-                    // Continue to retry esp_mesh_start after delay
+                    ESP_LOGE(MESH_TAG, "Failed to re-apply ESP-MESH configuration: %s.", esp_err_to_name(apply_cfg_err));
                 }
             }
-
-            ESP_LOGI(MESH_TAG, "Retrying esp_mesh_start() in 3 seconds..."); //
-            vTaskDelay(pdMS_TO_TICKS(3000)); //
+            ESP_LOGI(MESH_TAG, "Retrying esp_mesh_start() in 3 seconds...");
+            vTaskDelay(pdMS_TO_TICKS(3000));
         }
     }
 }
@@ -360,24 +346,32 @@ void EspMeshHandler::mesh_event_handler(void *arg, esp_event_base_t event_base, 
     switch (event_id) {
     case MESH_EVENT_STARTED:
         ESP_LOGI(MESH_TAG, "MESH_EVENT_STARTED");
-        esp_mesh_get_id(&mesh_id_); // Get the node's own mesh ID (MAC based)
+        esp_mesh_get_id(&mesh_id_); 
         ESP_LOGI(MESH_TAG, "Node Mesh MAC ID: " MACSTR, MAC2STR(mesh_id_.addr));
         
-        this->is_root_ = esp_mesh_is_root(); // Update root status
-        ESP_LOGI(MESH_TAG, "MESH_EVENT_STARTED: Node is_root actual status: %s", this->is_root_ ? "true" : "false");
-
-        mesh_connected_ = true; // Mesh protocol has started
-        mesh_recovery_task_running_ = false;
-
-        if (this->is_root_ && current_config_.wifi_ssid.empty()) { // Standalone root
-            ESP_LOGI(MESH_TAG, "Standalone root started. Starting mesh AP netif.");
-            ESP_ERROR_CHECK(mesh_netif_start_root_ap(true, 0)); 
-            ip_acquired_ = true; 
-            ESP_LOGI(MESH_TAG, "Standalone Root IP acquired (static). Starting MQTT client.");
-            if (!current_config_.mqtt_broker_uri.empty()) {
-                m_mqtt_handler_.start(current_config_.mqtt_broker_uri.c_str());
+        // Don't assume root status here yet if external router is configured.
+        // Let IP_EVENT_STA_GOT_IP on WIFI_STA_DEF confirm root status for router-connected roots.
+        // If no router is configured, esp_mesh_is_root() might be true if it self-elects.
+        if (current_config_.wifi_ssid.empty()) { // No external router configured
+            this->is_root_ = esp_mesh_is_root();
+            if (this->is_root_) {
+                 ESP_LOGI(MESH_TAG, "Standalone root started (no router config). Starting mesh AP netif.");
+                 ESP_ERROR_CHECK(mesh_netif_start_root_ap(true, 0)); // dns_addr 0 for standalone
+                 ip_acquired_ = true; // Internal IP is set up by mesh_netif_start_root_ap
+                 ESP_LOGI(MESH_TAG, "Standalone Root IP setup. Starting MQTT client (if configured).");
+                 if (!current_config_.mqtt_broker_uri.empty()) {
+                     m_mqtt_handler_.start(current_config_.mqtt_broker_uri.c_str());
+                 }
             }
+        } else {
+            // External router is configured. is_root_ will be set upon getting IP from router.
+            // For now, esp_mesh_is_root() might be true if it's the only node and voting, but IP is key.
+            ESP_LOGI(MESH_TAG, "MESH_EVENT_STARTED with router configured. is_root status will be confirmed by IP event.");
         }
+        ESP_LOGI(MESH_TAG, "MESH_EVENT_STARTED: Current effective is_root_ status: %s", this->is_root_ ? "true" : "false");
+
+        mesh_connected_ = true; 
+        mesh_recovery_task_running_ = false;
         break;
     case MESH_EVENT_STOPPED:
         ESP_LOGI(MESH_TAG, "MESH_EVENT_STOPPED");
@@ -392,12 +386,24 @@ void EspMeshHandler::mesh_event_handler(void *arg, esp_event_base_t event_base, 
         ESP_LOGI(MESH_TAG, "MESH_EVENT_PARENT_CONNECTED to BSSID: " MACSTR ", Layer: %d",
                  MAC2STR(connected_event->connected.bssid), esp_mesh_get_layer());
         
-        this->is_root_ = false; // Connected to a parent, so not root
-        ESP_LOGI(MESH_TAG, "MESH_EVENT_PARENT_CONNECTED: Node is_root set to false.");
-
         mesh_connected_ = true; 
-        ESP_LOGI(MESH_TAG, "Node connected to parent. Starting mesh STA netif for IP.");
-        ESP_ERROR_CHECK(mesh_netifs_start(false)); // false = is_node
+
+        // **** MODIFICATION START ****
+        // If an external router SSID is configured, this connection is likely to that router.
+        // In this case, we should NOT assume it's a child node and reconfigure the netif.
+        // We wait for IP_EVENT_STA_GOT_IP on "WIFI_STA_DEF" to confirm root status and external IP.
+        if (!current_config_.wifi_ssid.empty()) {
+            ESP_LOGI(MESH_TAG, "Connected to potential external router (%s). Waiting for IP to confirm root status and for MQTT.", current_config_.wifi_ssid.c_str());
+            // Do nothing here regarding netif reconfiguration or setting is_root_ to false.
+            // The ip_event_handler will manage the transition to root if IP is acquired on WIFI_STA_DEF.
+        } else {
+            // No external router configured. If we connect to a parent, we are a child.
+            this->is_root_ = false;
+            ESP_LOGI(MESH_TAG, "MESH_EVENT_PARENT_CONNECTED (no router configured): Node is_root set to false.");
+            ESP_LOGI(MESH_TAG, "Node connected to parent. Starting mesh STA netif for IP.");
+            ESP_ERROR_CHECK(mesh_netifs_start(false)); // For child node to get IP from mesh DHCP
+        }
+        // **** MODIFICATION END ****
         break;
     }
     case MESH_EVENT_PARENT_DISCONNECTED: {
@@ -468,17 +474,18 @@ void EspMeshHandler::ip_event_handler(void *arg, esp_event_base_t event_base, in
     if (event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         const char* if_key = esp_netif_get_ifkey(event->esp_netif);
-        ESP_LOGI(MESH_TAG, "IP_EVENT_STA_GOT_IP: Interface: %s, IP: " IPSTR, if_key, IP2STR(&event->ip_info.ip));
+        ESP_LOGI(MESH_TAG, "IP_EVENT_STA_GOT_IP: Interface: '%s', IP: " IPSTR, if_key, IP2STR(&event->ip_info.ip));
         
-        ip_acquired_ = true; 
+        // Get the handle for the default Wi-Fi STA interface (for external router)
+        esp_netif_t* ext_sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        // Get the handle for the MESH STA interface (for child node getting IP from mesh)
+        esp_netif_t* mesh_sta_netif = esp_netif_get_handle_from_ifkey("MESH_STA_DEF"); // Key from mesh_netif.c for mesh_link_sta
 
-        esp_netif_t* wifi_sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-        esp_netif_t* mesh_sta_netif = esp_netif_get_handle_from_ifkey("MESH_STA_DEF");
+        if (event->esp_netif == ext_sta_netif) {
+            ESP_LOGI(MESH_TAG, "IP_EVENT_STA_GOT_IP on external STA interface ('WIFI_STA_DEF'). Node is confirmed ROOT.");
+            this->is_root_ = true;    // **** CRITICAL: This node is the root ****
+            ip_acquired_ = true;      // IP acquired from external router
 
-        if (event->esp_netif == wifi_sta_netif) {
-            ESP_LOGI(MESH_TAG, "IP_EVENT_STA_GOT_IP on external STA interface (WIFI_STA_DEF). Node is acting as ROOT.");
-            this->is_root_ = true;
-            
             esp_netif_dns_info_t dns_info;
             esp_err_t dns_ret = esp_netif_get_dns_info(event->esp_netif, ESP_NETIF_DNS_MAIN, &dns_info);
             uint32_t dns_addr = 0;
@@ -486,45 +493,60 @@ void EspMeshHandler::ip_event_handler(void *arg, esp_event_base_t event_base, in
                 dns_addr = dns_info.ip.u_addr.ip4.addr;
                 ESP_LOGI(MESH_TAG, "Using DNS Server for mesh children: " IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
             } else {
-                ESP_LOGW(MESH_TAG, "Failed to get DNS info for root\'s external STA (err: %s). Using 0.0.0.0 for children\'s DNS.", esp_err_to_name(dns_ret));
+                ESP_LOGW(MESH_TAG, "Failed to get DNS info for root's external STA (err: %s). Using 0.0.0.0 for children's DNS.", esp_err_to_name(dns_ret));
             }
+            
+            ESP_LOGI(MESH_TAG, "Root has external IP. Starting mesh AP netif using mesh_netif_start_root_ap.");
             ESP_ERROR_CHECK(mesh_netif_start_root_ap(true, dns_addr)); 
 
-            ESP_LOGI(MESH_TAG, "Root (external IP OK, mesh AP starting). Starting MQTT client.");
+            ESP_LOGI(MESH_TAG, "Root (external IP OK, mesh AP started). Starting MQTT client.");
             if (!current_config_.mqtt_broker_uri.empty()) {
                 m_mqtt_handler_.start(current_config_.mqtt_broker_uri.c_str());
             }
 
-        } else if (event->esp_netif == mesh_sta_netif) {
-            ESP_LOGI(MESH_TAG, "IP_EVENT_STA_GOT_IP on MESH_STA interface (MESH_STA_DEF). Node is CHILD.");
-            this->is_root_ = false;
-            ESP_LOGI(MESH_TAG, "Node got IP on mesh interface. Starting MQTT client.");
+        } else if (mesh_sta_netif != NULL && event->esp_netif == mesh_sta_netif) {
+            // This condition means the node is a child and got an IP from the mesh root's DHCP.
+            ESP_LOGI(MESH_TAG, "IP_EVENT_STA_GOT_IP on MESH_STA interface ('MESH_STA_DEF'). Node is CHILD.");
+            this->is_root_ = false; // Explicitly a child
+            ip_acquired_ = true;     // IP acquired from mesh
+
+            ESP_LOGI(MESH_TAG, "Node (child) got IP on mesh interface. Starting MQTT client.");
             if (!current_config_.mqtt_broker_uri.empty()) {
                  m_mqtt_handler_.start(current_config_.mqtt_broker_uri.c_str());
             }
         } else {
-            // Could be MESH_AP_DEF or other interfaces.
-            // Check if it became root if not already determined.
-            bool current_is_root_status = esp_mesh_is_root();
-            if(this->is_root_ != current_is_root_status) {
-                 ESP_LOGI(MESH_TAG, "IP_EVENT_STA_GOT_IP for interface %s. Root status changed to %s", if_key, current_is_root_status ? "true" : "false");
-                 this->is_root_ = current_is_root_status;
-            } else {
-                ESP_LOGI(MESH_TAG, "IP_EVENT_STA_GOT_IP for an unhandled or already consistent interface key: %s. Current is_root: %s", if_key, this->is_root_ ? "true" : "false");
-            }
+            ESP_LOGW(MESH_TAG, "IP_EVENT_STA_GOT_IP on an unexpected interface: '%s'. Current is_root: %s", if_key, this->is_root_ ? "true" : "false");
+            // If it's some other interface, but the node *is* the mesh root according to mesh stack,
+            // and this IP is for the mesh AP, it's complex.
+            // For now, primary root confirmation is WIFI_STA_DEF getting an IP.
+            // And primary child confirmation is MESH_STA_DEF getting an IP.
         }
 
     } else if (event_id == IP_EVENT_STA_LOST_IP) {
-        // ESP-IDF v4.4.x: event_data for IP_EVENT_STA_LOST_IP is ip_event_got_ip_t*
-        // to access the esp_netif handle.
-        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data; // event_data is ip_event_got_ip_t* in IDF v4.4
         const char* if_key_lost = event ? esp_netif_get_ifkey(event->esp_netif) : "UNKNOWN_IF";
         ESP_LOGW(MESH_TAG, "IP_EVENT_STA_LOST_IP on interface %s", if_key_lost);
-        ip_acquired_ = false; 
-    } else if (event_id == IP_EVENT_AP_STAIPASSIGNED && is_root_) {
-        // This event means the root's DHCP server (on the mesh AP interface) assigned an IP to a child.
-        ip_event_ap_staipassigned_t* assigned_event = (ip_event_ap_staipassigned_t*)event_data;
-        ESP_LOGI(MESH_TAG, "Root's Mesh AP assigned IP: " IPSTR " to a station.", IP2STR(&assigned_event->ip));
+        
+        esp_netif_t* ext_sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        if (event && event->esp_netif == ext_sta_netif) {
+            ESP_LOGW(MESH_TAG, "Lost IP on external STA interface. No longer externally connected root.");
+            ip_acquired_ = false; 
+            // is_root_ might remain true if mesh itself is still up, but external connectivity is lost.
+            // MQTT should probably stop if it relies on this external IP.
+            // m_mqtt_handler_.stop(); // Consider MQTT implications
+        } else {
+             esp_netif_t* mesh_sta_netif = esp_netif_get_handle_from_ifkey("MESH_STA_DEF");
+             if (event && event->esp_netif == mesh_sta_netif) {
+                 ESP_LOGW(MESH_TAG, "Lost IP on MESH_STA interface (child node).");
+                 ip_acquired_ = false;
+                 // m_mqtt_handler_.stop();
+             }
+        }
+    } else if (event_id == IP_EVENT_AP_STAIPASSIGNED) { // This event is for the SoftAP interface
+        if (this->is_root_) { // Only if this node is acting as a root (and its mesh AP assigned an IP)
+            ip_event_ap_staipassigned_t* assigned_event = (ip_event_ap_staipassigned_t*)event_data;
+            ESP_LOGI(MESH_TAG, "Root's Mesh AP (on MESH_AP_DEF) assigned IP: " IPSTR " to a station.", IP2STR(&assigned_event->ip));
+        }
     }
 }
 

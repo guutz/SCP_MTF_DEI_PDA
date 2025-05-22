@@ -14,19 +14,19 @@
 
 #define LV_TICK_PERIOD_MS 1
 
-#define WIFI_STATION_SSID "ttbnl"
-#define WIFI_STATION_PASSWD "ttbnl1234"
+#define WIFI_STATION_SSID "Darbs for Existence's Integrity"
+#define WIFI_STATION_PASSWD "Go to bed, frosh!"
 
 // --- ESP-MESH Configuration ---
 #define MESH_PASSWORD_STR "your_mesh_password" // IMPORTANT: Change to your desired mesh password (min 8 chars)
-#define MESH_CHANNEL 0 // Default channel 6, range 1-13. 0 for auto-select (not recommended for fixed root)
+#define MESH_CHANNEL 0 // Default channel 10, range 1-13. 0 for auto-select (not recommended for fixed root)
 
 extern Xasin::Communication::EspMeshHandler g_mesh_handler; // Defined in main.cpp
 extern Xasin::Audio::TX audioManager; // Defined in laser_tag.cpp or main.cpp
 extern Housekeeping::BatteryManager g_battery_manager; // Defined in main.cpp
 
 // --- MQTT Configuration ---
-#define MQTT_BROKER_URI_STR "mqtt://test.mosquitto.org" // IMPORTANT: Change to your MQTT broker URI
+#define MQTT_BROKER_URI_STR "mqtt://192.168.4.27:1883" // IMPORTANT: Change to your MQTT broker URI
 
 // --- Terminal Style Definitions ---
 
