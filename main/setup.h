@@ -3,8 +3,8 @@
 
 #include "mcp23008.h"
 #include "lvgl.h"
-#include "EspMeshHandler.h"
-#include "xasin/audio/ByteCassette.h" // For Xasin::Audio::TX
+#include "xasin/mqtt/Handler.h"
+#include "lzrtag/sounds.h"
 #include "xasin/BatteryManager.h"
 
 #include "freertos/FreeRTOS.h"
@@ -12,20 +12,17 @@
 #include "freertos/semphr.h"
 #include "lvgl.h"
 
+#include <string>
+
 #define LV_TICK_PERIOD_MS 1
 
 #define WIFI_STATION_SSID "ttbnl"
 #define WIFI_STATION_PASSWD "ttbnl1234"
 
-// --- ESP-MESH Configuration ---
-#define MESH_PASSWORD_STR "your_mesh_password" // IMPORTANT: Change to your desired mesh password (min 8 chars)
-#define MESH_CHANNEL 0 // Default channel 10, range 1-13. 0 for auto-select (not recommended for fixed root)
-
-extern TaskHandle_t g_wifi_init_task_handle; // Defined in main.cpp
-
-extern Xasin::Communication::EspMeshHandler g_mesh_handler; // Defined in main.cpp
-// extern Xasin::Audio::TX audioManager; // Defined in laser_tag.cpp or main.cpp
+extern Xasin::MQTT::Handler mqtt;
+extern LZR::Sounds::SoundManager g_sound_manager; // Defined in main.cpp
 extern Housekeeping::BatteryManager g_battery_manager; // Defined in main.cpp
+extern std::string g_device_id; // Defined in main.cpp
 
 // --- MQTT Configuration ---
 #define MQTT_BROKER_URI_STR "mqtts://0fed07f982184f4db2a5cbd8f181ccae.s1.eu.hivemq.cloud:8883" // IMPORTANT: Change to your MQTT broker URI
@@ -36,6 +33,7 @@ extern Housekeeping::BatteryManager g_battery_manager; // Defined in main.cpp
 // Font
 #define TERMINAL_FONT &lv_font_firacode_14
 LV_FONT_DECLARE(lv_font_firacode_14);
+LV_FONT_DECLARE(lv_font_firacode_8);
 
 // Colors
 #define TERMINAL_COLOR_BACKGROUND lv_color_hex(0x000000)      // Black background

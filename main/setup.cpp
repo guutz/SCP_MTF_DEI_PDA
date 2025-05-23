@@ -71,7 +71,7 @@ void time_overlay_init(void) {
     }
     if (target_parent_for_time) {
         time_display_label = lv_label_create(target_parent_for_time, NULL);
-        lv_obj_set_style_local_text_font(time_display_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, TERMINAL_FONT);
+        lv_obj_set_style_local_text_font(time_display_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &lv_font_firacode_8);
         lv_obj_set_style_local_text_color(time_display_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, TERMINAL_COLOR_FOREGROUND_ALT);
         lv_obj_align(time_display_label, NULL, LV_ALIGN_IN_BOTTOM_LEFT, 0, 0);
         lv_label_set_text(time_display_label, "Starting...");
@@ -91,7 +91,7 @@ void lvgl_tick_timer_setup(void) {
 void lvgl_full_init(void) {
     lv_init();
     display_touch_init();
-    // time_overlay_init();
+    time_overlay_init();
     lvgl_tick_timer_setup();
 }
 

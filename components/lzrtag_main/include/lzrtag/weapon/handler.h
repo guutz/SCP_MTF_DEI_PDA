@@ -12,10 +12,15 @@
 // Added includes for IR integration
 #include "xasin/xirr/Transmitter.h" // For Xasin::XIRR::Transmitter
 #include "xasin/xirr/Receiver.h"   // For Xasin::XIRR::Receiver
-#include "CommHandler.h"           // For Xasin::Communication::CommHandler and CommReceivedData
-#include "lzrtag/player.h"         // For LZR::Player
+#include "xasin/mqtt/Handler.h"    // For Xasin::MQTT::Handler
 #include "cJSON.h"                 // For cJSON operations
 #include "lzrtag/LZRConfig.h"      // For PIN_IR_OUT, PIN_IR_IN
+#include "lzrtag/sounds.h"
+
+// Forward declarations
+namespace LZR {
+    class Player;
+}
 
 namespace LZRTag {
 namespace Weapon {
@@ -45,10 +50,7 @@ class Handler {
 protected:
 friend BaseWeapon;
 
-	Xasin::Audio::TX &audio;
-	Xasin::Audio::Source * previous_source;
-	Xasin::Audio::Source * current_source;
-
+	LZR::Sounds::SoundManager &audio;
 	// Current weapon points to the weapon instance that is actively being used.
 	// target_weapon points to the weapon the user wants to use. If the pointers
 	// are different, a weapon switch will be initiated.
@@ -78,17 +80,15 @@ friend BaseWeapon;
 	// Added for IR and communication
     Xasin::XIRR::Transmitter ir_tx_;
     Xasin::XIRR::Receiver ir_rx_;
-    Xasin::Communication::CommHandler* comm_handler_;
+    Xasin::MQTT::Handler* comm_handler_; // Pointer to the communication handler
     LZR::Player* player_; // Pointer to the player instance
 
 public:
-	Handler(Xasin::Audio::TX & audio, Xasin::Communication::CommHandler* comm_handler, LZR::Player* player);
+	Handler(LZR::Sounds::SoundManager & audio, Xasin::MQTT::Handler* comm_handler, LZR::Player* player);
+	void play(const std::string &sound_name);
+
 	void _internal_run_thread();
 	void start_thread();
-	AudioSource* play(int sound_id);
-	AudioSource* play(const std::vector<int>& sound_ids);
-	AudioSource* play(const Xasin::Audio::ByteCassetteCollection& sfx);
-	AudioSource* play(const Xasin::Audio::bytecassette_data_t& sfx);
 
 	wait_failure_t wait_for_trigger(TickType_t max_ticks = portMAX_DELAY, bool repress_needed = false);
 	wait_failure_t wait_for_trigger_release(TickType_t max_ticks = portMAX_DELAY);
@@ -123,4 +123,4 @@ public:
 }
 }
 
-#endif
+#endif // __LZRTAG_WEAPON_HANDLER_H__

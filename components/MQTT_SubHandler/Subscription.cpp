@@ -54,46 +54,32 @@ void Subscription::raw_subscribe() {
 	esp_mqtt_client_subscribe(mqtt_handler.mqtt_handle, topic.data(), qos);
 }
 
-void Subscription::feed_data(MQTT_Packet data) { // data.topic here is the full topic from MQTT event
+void Subscription::feed_data(MQTT_Packet data) {
 	if(on_received == nullptr) return;
-	
-	// Store the original full topic before it's potentially modified or shadowed
-	std::string original_full_topic = data.topic;
+	if(data.topic.length() < topic.length()) return;
 
-	if(data.topic.length() < topic.length()) return; // topic is the subscription filter
-
-	std::string topicRest; // This will be the part of the topic AFTER the filter match
+	std::string topicRest;
 
 	int i=0;
 	while(true) {
-		if(topic.at(i) == '#') { // Wildcard #
-			topicRest = std::string(original_full_topic.data() + i, original_full_topic.length() - i);
+		if(topic.at(i) == '#') {
+			topicRest = std::string(data.topic.data() + i, data.topic.length() - i);
 			break;
 		}
-		// Note: This logic doesn't handle '+' wildcard explicitly, assumes exact segment match or '#'
-		if(topic.at(i) != original_full_topic.at(i)) return; // No match
+		if(topic.at(i) != data.topic.at(i)) return;
 
 		i++;
 
-		if(i == topic.length()) { // Reached end of subscription filter
-			if(i == original_full_topic.length()) { // Exact match
-				topicRest = ""; // No "rest"
-			} else if (original_full_topic.at(i) == '/') { // Matched a prefix, like "foo/bar" to "foo/bar/baz"
-                 topicRest = std::string(original_full_topic.data() + i +1, original_full_topic.length() -i -1);
-            }
-            else { // Filter is "foo/bar" but message is "foo/barbaz" - not a valid match by segments
-                return;
-            }
-			break;
-		}
-		if (i == original_full_topic.length()) { // Reached end of message topic but not filter (e.g. filter "a/b/c", message "a/b")
-			return; // No match
+		if(i == topic.length()) {
+			if(i != data.topic.length())
+				return;
+			else
+				break;
 		}
 	}
 
-	ESP_LOGV(mqtt_tag, "Topic %s matched! (Full: %s, Rest:%s)", topic.data(), original_full_topic.c_str(), topicRest.c_str());
-	// Pass topicRest, original data, and the original_full_topic
-	on_received({topicRest, data.data, original_full_topic});
+	ESP_LOGV(mqtt_tag, "Topic %s matched! (Topic-Rest:%s)", topic.data(), topicRest.data());
+	on_received({topicRest, data.data});
 }
 
 } /* namespace MQTT */

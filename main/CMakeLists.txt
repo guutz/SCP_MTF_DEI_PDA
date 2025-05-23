@@ -20,5 +20,6 @@ idf_component_register(
     "menu_log.cpp"
     "persistent_state.cpp"
     "menu_visibility.cpp"
+    "telescope_game.cpp"
     INCLUDE_DIRS "."
 )

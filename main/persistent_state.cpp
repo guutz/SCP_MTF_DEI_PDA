@@ -1,5 +1,6 @@
 #include "persistent_state.h"
 #include "sd_raw_access.h"
+#include "setup.h"
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -160,6 +161,7 @@ namespace PersistentState {
                 ESP_LOGI(TAG, "%s already exists. Loading existing state.", menu_state_path);
                 if (load_menu_persistent_state(g_current_menu_state)) {
                     g_menu_state_loaded = true;
+                    g_device_id = g_current_menu_state.playerInfo.device_id; // Set global device ID from loaded state
                     xSemaphoreGive(g_state_mutex);
                     return true;
                 } else {
@@ -180,6 +182,7 @@ namespace PersistentState {
             
             g_current_menu_state = default_state;
             g_menu_state_loaded = true;
+            g_device_id = default_state.playerInfo.device_id; // Set global device ID from default state
             ESP_LOGI(TAG, "Default persistent state initialized and loaded.");
             xSemaphoreGive(g_state_mutex);
             return true;
@@ -320,16 +323,26 @@ namespace PersistentState {
         return viewed;
     }
 
-    // --- Old functions - to be reviewed/removed ---
-    // bool player_info_exists_on_sd() {
-    //     FILE* fp = sd_raw_fopen(info_path, "r");
-    //     if (fp) {
-    //         sd_raw_fclose(fp);
-    //         return true;
-    //     }
-    //     return false;
-    // }
-    // bool read_player_info_from_sd(PlayerInfo &info) { ... }
-    // bool write_default_player_info_to_sd() { ... }
+    void set_device_id(const std::string& device_id) {
+        if (!g_menu_state_loaded) {
+            if (!initialize_default_persistent_state_if_needed()) {
+                return;
+            }
+        }
+
+        if (xSemaphoreTake(g_state_mutex, portMAX_DELAY) == pdTRUE) {
+            bool updated = (g_current_menu_state.playerInfo.device_id != device_id);
+            if (updated) {
+                g_current_menu_state.playerInfo.device_id = device_id;
+                ESP_LOGI(TAG, "Setting device ID to: %s", device_id.c_str());
+                save_menu_persistent_state(g_current_menu_state);
+            } else {
+                ESP_LOGD(TAG, "Device ID already set to: %s", device_id.c_str());
+            }
+            xSemaphoreGive(g_state_mutex);
+        } else {
+            ESP_LOGE(TAG, "Failed to take state mutex for set_device_id.");
+        }
+    }
 
 }

@@ -19,6 +19,7 @@
 #include "audio_player.h"
 #include "menu_functions.h"
 #include "setup.h"
+#include "menu_visibility.h"
 
 LV_FONT_DECLARE(lv_font_firacode_16);
 LV_IMG_DECLARE(SCP_Foundation);
@@ -47,7 +48,6 @@ static void dynamic_button_event_handler(lv_obj_t * obj, lv_event_t event);
 
 
 void play_audio_file_in_background(void);
-
 
 ///////////////////////////////////////////////
 /////// GLOBAL VARIABLES //////////////////////
@@ -110,9 +110,7 @@ void ui_init(lv_task_t *current_init_task) {
     ESP_LOGI(TAG_UI_MGR, "UI Init: Initializing styles and preparing splash screen.");
 
     ui_styles_init();
-
-    audio_player_init(DAC_CHANNEL_2);
-
+    
     register_menu_functions(); // Register predefined functions for menu items
 
     if (parse_menu_definition_file("S:/DEI/menu.txt")) { 
@@ -223,6 +221,12 @@ static lv_obj_t* create_screen_from_definition_impl(const MenuScreenDefinition* 
     lv_obj_t* first_interactive_object_to_focus = NULL;
 
     for (const auto& item_def_from_vector : definition->items) {
+        // Check visibility condition before rendering the item
+        if (!evaluate_menu_item_visibility(item_def_from_vector)) {
+            ESP_LOGI(TAG_UI_MGR, "Skipping item '%s' due to visibility condition.", item_def_from_vector.text_to_display.c_str());
+            continue;
+        }
+
         if (item_def_from_vector.render_type == RENDER_AS_STATIC_LABEL) {
 
             lv_obj_t* label_container = lv_cont_create(screen, NULL);

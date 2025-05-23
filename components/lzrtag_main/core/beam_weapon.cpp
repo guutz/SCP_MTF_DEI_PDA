@@ -21,6 +21,7 @@ bool BeamWeapon::can_shoot()
 
 	return true;
 }
+
 bool BeamWeapon::can_reload()
 {
 	return true;
@@ -28,8 +29,9 @@ bool BeamWeapon::can_reload()
 
 void BeamWeapon::reload_start()
 {
-	handler.play(config.reload_sound);
+	handler.play(config.reload_sound.file_path);
 }
+
 void BeamWeapon::reload_tick()
 {
 	current_charge = config.beam_runtime;
@@ -42,7 +44,7 @@ void BeamWeapon::shot_process() {
 
 	int variant_number = esp_random() % (config.start_sounds.size());
 
-	auto last_source = handler.play(config.start_sounds[variant_number]);
+	handler.play(config.start_sounds[variant_number].file_path);
 	vTaskDelay(config.beam_start_delay);
 
 	while(true) {
@@ -52,16 +54,11 @@ void BeamWeapon::shot_process() {
 		current_charge -= 30;
 		bump_shot_tick();
 
-		if(last_source->remaining_runtime() < 30)
-			last_source = handler.play(config.loop_sounds[variant_number]);
+		handler.play(config.loop_sounds[variant_number].file_path);
 	}
 
 	if(current_charge < 100)
 		wants_to_reload = true;
-
-	last_source->fade_out();
-
-	vTaskDelay(handler.play(config.end_sounds[variant_number])->remaining_runtime());
 }
 
 int32_t BeamWeapon::get_clip_ammo()

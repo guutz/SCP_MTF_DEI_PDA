@@ -1,8 +1,10 @@
 #include "menu_visibility.h"
 #include "menu_structures.h" // Assumed to declare G_MenuScreens (e.g., extern std::map<std::string, MenuItemScreen> G_MenuScreens;)
 #include "persistent_state.h" // For MenuPersistentState and get_current_menu_state()
-#include "EspMeshHandler.h"      // For Xasin::Communication::EspMeshHandler
-#include "xasin/mqtt/Handler.h"  // For Xasin::MQTT::MQTT_Packet and potentially the type returned by g_mesh_handler.mqtt()
+#include "xasin/mqtt/Handler.h"      // For Xasin::Communication::EspMeshHandler
+#include "xasin/mqtt/Handler.h"  // For Xasin::MQTT::MQTT_Packet and potentially the type returned by mqtt.mqtt()
+
+#include "setup.h"
 
 #include <string>
 #include <vector>
@@ -23,7 +25,7 @@ static std::map<std::string, std::string> g_mqtt_state_vars;
 // static SemaphoreHandle_t g_mqtt_state_mutex = xSemaphoreCreateMutex(); // Consider if needed
 
 // External declaration for the global mesh handler.
-extern Xasin::Communication::EspMeshHandler g_mesh_handler; // Defined in main.cpp or setup.cpp
+extern Xasin::MQTT::Handler mqtt; // Defined in main.cpp or setup.cpp
 
 // Helper function to parse time string (HH:MM format)
 static bool parse_time_string(const std::string& time_str, std::tm& tm_out) {
@@ -49,12 +51,13 @@ static bool parse_datetime_string(const std::string& datetime_str, std::tm& tm_o
     return !ss.fail();
 }
 
-// Helper function to get current time as tm struct
+// Replace get_current_tm with direct use of time.h functions
 static std::tm get_current_tm() {
-    auto now = std::chrono::system_clock::now();
-    std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-    std::tm now_tm = *std::localtime(&now_c);
-    return now_tm;
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo); // Thread-safe version of localtime
+    return timeinfo;
 }
 
 
@@ -77,25 +80,25 @@ void setup_mqtt_visibility_handlers() {
         return;
     }
 
-    // Directly use g_mesh_handler.subscribe_to as per user feedback and EspMeshHandler.cpp structure
+    // Directly use mqtt.subscribe_to as per user feedback and EspMeshHandler.cpp structure
     // The EspMeshHandler::subscribe method takes a topic, a comm_message_callback_t, and qos.
     // However, our menu_visibility.cpp set_mqtt_state_variable needs the raw packet data.
     // The internal m_mqtt_handler_.subscribe_to takes a Xasin::MQTT::mqtt_callback.
-    // We need to ensure g_mesh_handler exposes a way to subscribe with a Xasin::MQTT::mqtt_callback
+    // We need to ensure mqtt exposes a way to subscribe with a Xasin::MQTT::mqtt_callback
     // or we adapt. 
 
-    // For now, assuming g_mesh_handler has a method that aligns with Xasin::MQTT::Handler::subscribe_to
+    // For now, assuming mqtt has a method that aligns with Xasin::MQTT::Handler::subscribe_to
     // or that EspMeshHandler::subscribe can be adapted or a new method added to EspMeshHandler
     // if its current subscribe() signature is too high-level (with CommReceivedData).
 
     // Revisiting the EspMeshHandler.cpp, it seems its `subscribe` method is for a higher-level callback.
     // The `m_mqtt_handler_` is a `Xasin::MQTT::Handler`.
     // So, to use the `Xasin::MQTT::MQTT_Packet` directly, we would indeed need access to `m_mqtt_handler_`.
-    // Let's assume for a moment that `g_mesh_handler.mqtt()` or similar exists to get the underlying `Xasin::MQTT::Handler`.
+    // Let's assume for a moment that `mqtt.mqtt()` or similar exists to get the underlying `Xasin::MQTT::Handler`.
     // If not, EspMeshHandler needs a new method or modification.
 
-    // Based on the user's prompt \"no, you can call g_mesh_handler.subscribe directly\",
-    // this implies g_mesh_handler itself has a subscribe method suitable for our needs.
+    // Based on the user's prompt \"no, you can call mqtt.subscribe directly\",
+    // this implies mqtt itself has a subscribe method suitable for our needs.
     // The provided EspMeshHandler.cpp shows `EspMeshHandler::subscribe` which wraps `m_mqtt_handler_.subscribe_to`
     // but it uses a `comm_message_callback_t` which passes `CommReceivedData`.
     // This is not what menu_visibility.cpp's lambda expects (it expects `const Xasin::MQTT::MQTT_Packet&`).
@@ -122,19 +125,19 @@ void setup_mqtt_visibility_handlers() {
             if (item.visibility.type == VISIBILITY_MQTT_STATE && !item.visibility.state_variable.empty()) {
                 std::string topic_to_subscribe = item.visibility.state_variable;
 
-                ESP_LOGI(TAG_VISIBILITY, "Preparing to subscribe to MQTT topic for visibility (via g_mesh_handler.subscribe): %s", topic_to_subscribe.c_str());
+                ESP_LOGI(TAG_VISIBILITY, "Preparing to subscribe to MQTT topic for visibility (via mqtt.subscribe_to): %s", topic_to_subscribe.c_str());
 
-                // Using g_mesh_handler.subscribe, which expects comm_message_callback_t
+                // Using mqtt.subscribe_to, which expects comm_message_callback_t
                 // comm_message_callback_t is std::function<void(const CommReceivedData&)>)
-                bool subscribed = g_mesh_handler.subscribe(
+                bool subscribed = mqtt.subscribe_to(
                     topic_to_subscribe,
-                    [topic_to_subscribe](const Xasin::Communication::CommReceivedData& data) { // Lambda now takes CommReceivedData
+                    [topic_to_subscribe](const Xasin::MQTT::MQTT_Packet& data) { // Lambda now takes CommReceivedData
                         // data.topic is the filter, data.payload is vector<uint8_t>
                         // The original lambda used packet.full_topic and packet.data (std::string)
                         // We need to convert payload to string for set_mqtt_state_variable
-                        std::string payload_str(data.payload.begin(), data.payload.end());
-                        
-                        ESP_LOGI(TAG_VISIBILITY, "MQTT callback (via g_mesh_handler.subscribe) for visibility: Topic Filter: %s, Payload: %s", 
+                        std::string payload_str(data.data.begin(), data.data.end());
+
+                        ESP_LOGI(TAG_VISIBILITY, "MQTT callback (via mqtt.subscribe_to) for visibility: Topic Filter: %s, Payload: %s",
                                  data.topic.c_str(), payload_str.c_str());
                         
                         // set_mqtt_state_variable expects the exact topic that was matched,
@@ -146,7 +149,7 @@ void setup_mqtt_visibility_handlers() {
                 );
 
                 if (!subscribed) {
-                    ESP_LOGE(TAG_VISIBILITY, "Failed to subscribe via g_mesh_handler.subscribe for topic: %s", topic_to_subscribe.c_str());
+                    ESP_LOGE(TAG_VISIBILITY, "Failed to subscribe via mqtt.subscribe for topic: %s", topic_to_subscribe.c_str());
                 }
             }
         }
@@ -229,7 +232,7 @@ MenuItemVisibilityCondition parse_visibility_condition(const std::string& condit
 
 
 bool evaluate_visibility_condition(const MenuItemVisibilityCondition& condition) { // Removed persistent_state parameter
-    const MenuPersistentState& current_persistent_state = PersistentState::get_current_menu_state();
+    const PersistentState::MenuPersistentState& current_persistent_state = PersistentState::get_current_menu_state();
     // Mutex for persistent_state is handled within its own methods or by get_current_menu_state if needed for read.
 
     switch (condition.type) {
@@ -270,8 +273,14 @@ bool evaluate_visibility_condition(const MenuItemVisibilityCondition& condition)
             std::time_t time_start = std::mktime(&tm_now_start);
             std::time_t time_end = std::mktime(&tm_now_end);
             std::time_t time_now = std::mktime(&tm_now_full);
-            
-            if (time_end < time_start) { 
+
+            char time_now_str[20]; // Buffer to hold the formatted time
+            std::strftime(time_now_str, sizeof(time_now_str), "%H:%M:%S", &tm_now_full);
+
+            ESP_LOGI(TAG_VISIBILITY, "Evaluating TIME_RANGE: Start: %s, End: %s, Now: %s",
+                     condition.start_time_str.c_str(), condition.end_time_str.c_str(), time_now_str);
+
+            if (time_end < time_start) {
                 return (time_now >= time_start || time_now <= time_end);
             } else {
                 return (time_now >= time_start && time_now <= time_end);

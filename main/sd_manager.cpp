@@ -313,7 +313,7 @@ static lv_fs_res_t sd_tell_cb(lv_fs_drv_t* drv, void* file_p_arg, uint32_t* pos_
 }
 
 
-#define TEXT_DISPLAY_BUFFER_SIZE 1024
+#define TEXT_DISPLAY_BUFFER_SIZE 8192*4
 esp_err_t lvgl_display_text_from_sd_file(lv_obj_t *label, const char *lvgl_path_with_drive) {
     static char text_display_buffer[TEXT_DISPLAY_BUFFER_SIZE]; 
     const char *error_msg = "Error: File load failed.";
@@ -367,7 +367,7 @@ std::string trim_string(const std::string& str) {
     return str.substr(start, end - start + 1);
 }
 
-#define MENU_FILE_BUFFER_SIZE 8192
+#define MENU_FILE_BUFFER_SIZE 8192*2
 bool parse_menu_definition_file(const char* file_path_on_sd) {
     ESP_LOGI(TAG_SD, "Attempting to parse menu definition file: %s", file_path_on_sd);
     if (s_sd_mutex == NULL || s_card == NULL || !s_lvgl_fs_registered) {

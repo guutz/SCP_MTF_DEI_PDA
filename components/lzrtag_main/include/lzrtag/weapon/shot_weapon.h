@@ -3,7 +3,6 @@
 
 #include "../weapon.h"
 #include <vector>
-#include <xasin/audio/ByteCassette.h>
 
 namespace LZRTag {
 namespace Weapon {

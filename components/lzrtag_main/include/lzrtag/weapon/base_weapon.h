@@ -2,13 +2,17 @@
 #define __LZRTAG_WEAPON_BASE_H__
 
 #include <stdint.h>
+#include "lzrtag/weapon/handler.h"
 
-#include "handler.h"
+// Forward declarations
+namespace LZRTag {
+namespace Weapon {
+    class Handler;
+}
+}
 
 namespace LZRTag {
 namespace Weapon {
-
-class Handler;
 
 class BaseWeapon {
 protected:

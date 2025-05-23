@@ -3,7 +3,8 @@
 #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 #include "esp_log.h"
 #include "lzrtag/weapon/handler.h"
-#include "EspMeshHandler.h"
+#include "lzrtag/player.h"  // Need full definition for implementation
+#include <string>
 
 namespace LZRTag {
 namespace Weapon {
@@ -14,8 +15,8 @@ void handler_start_thread_func(void *args) {
 	reinterpret_cast<Handler *>(args)->_internal_run_thread();
 }
 
-Handler::Handler (Xasin::Audio::TX & audio, Xasin::Communication::CommHandler* comm_handler, LZR::Player* player) : 
-	audio(audio), previous_source(nullptr), current_source(nullptr),
+Handler::Handler (LZR::Sounds::SoundManager & audio, Xasin::MQTT::Handler* comm_handler, LZR::Player* player) : 
+	audio(audio),
 	target_weapon(nullptr), current_weapon(nullptr),
 	process_task(0), action_start_tick(0),
 	last_shot_tick(0), last_ir_arbitration_code_(1),
@@ -28,6 +29,11 @@ Handler::Handler (Xasin::Audio::TX & audio, Xasin::Communication::CommHandler* c
 	on_shot_func(),
 	can_shoot_func()
 {
+}
+
+void Handler::play(const std::string &sound_name) {
+	ESP_LOGD(LZR_WPN_HANDLER_TAG, "Playing sound: %s", sound_name.c_str());
+	audio.play_audio(sound_name);
 }
 
 wait_failure_t Handler::wait_for_trigger(TickType_t max_ticks, bool repress_needed) {
@@ -195,7 +201,7 @@ void Handler::start_thread() {
 	if (process_task != 0)
 		return;
 
-	xTaskCreate(handler_start_thread_func, "LZR::WPN", 4096, this, 5, &process_task);
+	xTaskCreate(handler_start_thread_func, "LZR::WPN", 4096, this, 10, &process_task);
 }
 
 void Handler::update_btn(bool new_button_state) {
@@ -301,14 +307,14 @@ void Handler::init_ir_system() {
             uint8_t beaconID = *reinterpret_cast<const uint8_t*>(data);
             ESP_LOGD(LZR_WPN_HANDLER_TAG, "Got beacon code: %d", beaconID);
 
-            if (comm_handler_ && comm_handler_->isConnected()) {
+            if (comm_handler_ && !comm_handler_->is_disconnected()) {
                 char oBuff[10] = {};
                 sprintf(oBuff, "%d", beaconID);
-                comm_handler_->publish("event/ir_beacon", oBuff, strlen(oBuff));
+                comm_handler_->publish_to("event/ir_beacon", oBuff, strlen(oBuff));
             }
         } else if (channel >= 130 && channel < 134) { // Hit code
             const uint8_t *dPtr = reinterpret_cast<const uint8_t *>(data);
-            if (player_ && dPtr[0] != player_->get_id()) { // Check if player_ is valid
+            if (player_ && dPtr[0] != player_->get_id()) { 
                 send_ir_hit_event(dPtr[0], channel - 130);
             }
         }
@@ -345,7 +351,7 @@ void Handler::send_ir_signal(int8_t cCode) {
 }
 
 void Handler::send_ir_hit_event(uint8_t pID, uint8_t arbCode) {
-    if (!comm_handler_ || !comm_handler_->isConnected()) {
+    if (!comm_handler_ || comm_handler_->is_disconnected()) {
         ESP_LOGW(LZR_WPN_HANDLER_TAG, "Cannot send IR hit event: CommHandler not connected or not set.");
         return;
     }
@@ -357,30 +363,19 @@ void Handler::send_ir_hit_event(uint8_t pID, uint8_t arbCode) {
     }
 
     cJSON_AddNumberToObject(output, "shooterID", pID);
-    std::string device_id_str = Xasin::Communication::get_device_mac_string(); // Get device ID as std::string
+    std::string device_id_str = player_->get_id() == 0 ? "0" : std::to_string(player_->get_id());
     cJSON_AddStringToObject(output, "target", device_id_str.c_str()); // Use .c_str() for const char*
     cJSON_AddNumberToObject(output, "arbCode", arbCode);
 
     char outStr[128] = {}; // Increased buffer size
     if (cJSON_PrintPreallocated(output, outStr, sizeof(outStr) -1, false)) {
-        comm_handler_->publish("event/ir_hit", outStr, strlen(outStr));
+        comm_handler_->publish_to("event/ir_hit", outStr, strlen(outStr));
         ESP_LOGD(LZR_WPN_HANDLER_TAG, "Sent IR hit event: shooterID=%d, target=%s, arbCode=%d", pID, device_id_str.c_str(), arbCode);
     } else {
         ESP_LOGE(LZR_WPN_HANDLER_TAG, "Failed to print cJSON for IR hit event.");
     }
 
     cJSON_Delete(output);
-}
-
-// --- AUDIO PLAYBACK METHODS ---
-LZRTag::Weapon::AudioSource* Handler::play(const Xasin::Audio::bytecassette_data_t& sfx) {
-    Xasin::Audio::ByteCassette::play(audio, sfx);
-    return nullptr; // Optionally, return a real AudioSource if needed
-}
-
-LZRTag::Weapon::AudioSource* Handler::play(const Xasin::Audio::ByteCassetteCollection& sfxs) {
-    Xasin::Audio::ByteCassette::play(audio, sfxs);
-    return nullptr; // Optionally, return a real AudioSource if needed
 }
 
 }

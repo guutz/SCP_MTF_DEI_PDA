@@ -1,5 +1,3 @@
-
-
 #include <lzrtag/weapon/shot_weapon.h>
 
 namespace LZRTag {
@@ -26,7 +24,7 @@ bool ShotWeapon::can_reload()
 }
 
 void ShotWeapon::reload_start() {
-	handler.play(config.reload_sfx);
+	handler.play(config.reload_sfx.file_path);
 }
 void ShotWeapon::reload_tick()
 {
@@ -60,14 +58,14 @@ while(true) {
 
 void ShotWeapon::shot_process()
 {
-	TickType_t last_shot = 0;
 
 	if(handler.wait_for_trigger(portMAX_DELAY, config.require_repress) != TRIGGER_PRESSED)
 		return;
 	
 	for(int i = std::max(1, config.salve_count); i != 0; i--) {
-		handler.play(config.shot_sfx);
-		
+		int variant_number = esp_random() % (config.shot_sfx.size());
+		handler.play(config.shot_sfx[variant_number].file_path);
+
 		bump_shot_tick();
 		current_ammo--;
 		if(current_ammo == 0)

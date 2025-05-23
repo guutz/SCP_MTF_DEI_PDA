@@ -29,7 +29,7 @@ bool HeavyWeapon::can_reload()
 }
 
 void HeavyWeapon::reload_start() {
-	handler.play(config.reload_sfx);
+	handler.play(config.reload_sfx.file_path);
 }
 void HeavyWeapon::reload_tick()
 {
@@ -42,15 +42,17 @@ void HeavyWeapon::shot_process() {
 	if(handler.wait_for_trigger(portMAX_DELAY) != TRIGGER_PRESSED)
 		return;
 	
-	handler.play(config.start_sfx);
+	int variant_number = esp_random() % (config.start_sfx.size());
+	handler.play(config.start_sfx[variant_number].file_path);
 	current_ammo--;
 	if (current_ammo == 0)
 		wants_to_reload = true;
 
 	vTaskDelay(config.start_delay);
 
-	while(handler.get_btn_state() && handler.can_shoot()) {		
-		handler.play(config.shot_sfx);
+	while(handler.get_btn_state() && handler.can_shoot()) {
+		int variant_number = esp_random() % (config.shot_sfx.size());
+		handler.play(config.shot_sfx[variant_number].file_path);
 		vTaskDelay(config.shot_delay);
 
 		current_ammo--;

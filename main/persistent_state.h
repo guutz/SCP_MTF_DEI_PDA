@@ -38,8 +38,9 @@ namespace PersistentState {
     void mark_page_as_viewed(const std::string& page_id); // page_id is the identifier for the content/page
     bool has_page_been_viewed(const std::string& page_id); // Checks against the loaded state
 
-    // Old functions - decide if they are still needed or if MenuPersistentState supersedes them
-    // bool player_info_exists_on_sd(); 
-    // bool read_player_info_from_sd(PlayerInfo &info); // Superseded by load_menu_persistent_state
-    // bool write_default_player_info_to_sd(); // Superseded by initialize_default_persistent_state_if_needed
+    // Function to get the current device ID from persistent state
+    std::string get_device_id();
+
+    // Function to set the device ID in persistent state
+    void set_device_id(const std::string& device_id);
 }

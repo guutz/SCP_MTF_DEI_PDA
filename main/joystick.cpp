@@ -27,8 +27,8 @@ static lv_indev_state_t last_state_lvgl = LV_INDEV_STATE_REL;
 // Deadzone and threshold for joystick analog to digital conversion
 #define JOYSTICK_DEADZONE_LOW  1000 // Values below this are considered neutral
 #define JOYSTICK_DEADZONE_HIGH 3000 // Values above this are considered neutral
-#define JOYSTICK_THRESHOLD_LOW   500  // Lower boundary for active range
-#define JOYSTICK_THRESHOLD_HIGH  3500 // Upper boundary for active range
+#define JOYSTICK_THRESHOLD_LOW   1000  // Lower boundary for active range
+#define JOYSTICK_THRESHOLD_HIGH  3000  // Upper boundary for active range
 
 
 static bool joystick_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data) { // Changed return type to bool

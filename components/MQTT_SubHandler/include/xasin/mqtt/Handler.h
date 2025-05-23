@@ -21,8 +21,6 @@
 
 #include <stdint.h>
 
-#define CONFIG_PROJECT_NAME "LZR"
-
 namespace Xasin {
 namespace MQTT {
 
@@ -38,9 +36,8 @@ extern const char *mqtt_tag;
 typedef esp_mqtt_client_config_t mqtt_cfg;
 
 struct MQTT_Packet {
-	const std::string &topic; // This will hold the topic suffix/rest after matching
+	const std::string &topic;
 	const std::string &data;
-	std::string full_topic; // This will hold the original full topic string from the broker
 };
 typedef std::function<void (const MQTT_Packet)> mqtt_callback;
 
@@ -65,15 +62,24 @@ protected:
 	std::string base_topic;
 
 public:
+	static bool start_wifi_from_nvs(int psMode = 0);
+	static void set_nvs_wifi(const char *wifi_ssid, const char *wifi_pswd);
+	static void set_nvs_uri(const char *new_uri);
+
+	static void start_wifi(const char *SSID, const char *PSWD, int psMode = 0);
+	static void try_wifi_reconnect(system_event_t *event);
 
 	Handler();
-	Handler(const std::string & base_topic);
 
 	void topicsize_string(std::string &topic);
+	void set_base_topic_from_device_id(const std::string &device_id);
 
 	void start(const mqtt_cfg &config);
 	void start(const std::string URI);
 
+	bool start_from_nvs();
+
+	void wifi_handler(system_event_t *event);
 	void mqtt_handler(esp_mqtt_event_t *event);
 
 	void set_status(const std::string &newStatus);
@@ -83,7 +89,7 @@ public:
 
 	Subscription * subscribe_to(std::string topic, mqtt_callback callback, int qos = 1);
 
-	uint8_t is_disconnected() const;
+	uint8_t is_disconnected();
 };
 
 } /* namespace MQTT */

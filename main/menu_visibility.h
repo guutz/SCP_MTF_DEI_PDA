@@ -21,7 +21,7 @@ bool evaluate_menu_item_visibility(const MenuItemDefinition& item_def);
 void set_mqtt_state_variable(const std::string& topic, const std::string& value);
 
 // Helper function (if needed externally, otherwise keep static in .cpp)
-// bool evaluate_visibility_condition(const MenuItemVisibilityCondition& condition);
+bool evaluate_visibility_condition(const MenuItemVisibilityCondition& condition);
 
 
 #endif // MENU_VISIBILITY_H

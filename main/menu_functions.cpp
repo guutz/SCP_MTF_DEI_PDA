@@ -10,6 +10,7 @@
 #include "setup.h"
 #include "cd4053b_wrapper.h"
 #include "ui_manager.h"
+#include "telescope_game.h"
 
 #define TAG_MENU_FUNC "menu_func"
 
@@ -27,8 +28,8 @@ static void exit_laser_tag_mode_from_menu(lv_obj_t *obj, lv_event_t event);
 
 void register_menu_functions(void) {
     // Register the menu functions with the predefined function list
-    G_PredefinedFunctions["OTA_UPDATE"] = trigger_ota_update_from_menu;
-    G_PredefinedFunctions["START_WIFI"] = start_wifi_from_menu;
+    // G_PredefinedFunctions["OTA_UPDATE"] = trigger_ota_update_from_menu;
+    // G_PredefinedFunctions["START_WIFI"] = start_wifi_from_menu;
     G_PredefinedFunctions["SHOW_WIFI_STATUS"] = show_wifi_status_from_menu;
     G_PredefinedFunctions["PLAY_SOUND"] = play_audio_file_in_background;
     G_PredefinedFunctions["TELESCOPE_CONTROL"] = open_telescope_control_modal;
@@ -198,41 +199,40 @@ static void ok_button_cb(lv_obj_t *obj, lv_event_t event) {
 
 // Custom predefined function to play an audio file in the background
 void play_audio_file_in_background(void) {
-    const char* audio_file_path = "DEI/sounds/GameStart.raw"; // Replace with actual file path
+    const char* audio_file_path = "ride"; // Replace with actual file path
     menu_log_add(TAG_MENU_FUNC, "Playing audio file using Xasin::Audio: %s", audio_file_path);
 
-    Xasin::Audio::bytecassette_data_t audio_data = {
-        .file_path = audio_file_path,
-        .data_samplerate = 8000,
-        .volume = 128 
-    };
+    g_sound_manager.play_audio(audio_file_path);
 
-    // Assuming audioManager is globally accessible (e.g., externed in laser_tag.h or setup.h)
-    Xasin::Audio::ByteCassette::play(audioManager, audio_data);
-
-    // The Xasin::Audio::ByteCassette::play method is void, so direct error checking like before isn't possible here.
-    // Playback is handled by the audio manager; further error handling would be within that system or via callbacks if implemented.
 }
 
 void open_telescope_control_modal(void) {
     static TelescopeController* telescope = nullptr;
     static lv_task_t* joystick_task = nullptr;
-    static char last_sent[64] = "";
-    static char last_recv[128] = "";
 
     // Helper: wrap send_command and read_response to update labels
     struct TeleProxy : public TelescopeController {
-        lv_obj_t* sent;
-        lv_obj_t* recv;
-        TeleProxy(lv_obj_t* s, lv_obj_t* r) : sent(s), recv(r) {}
-        esp_err_t send_command(const char* cmd, bool add_cr = true, int send_delay_ms = 8, int recv_delay_ms = 8) override {
-            snprintf(last_sent, sizeof(last_sent), "%s", cmd);
-            lv_label_set_text_fmt(sent, "Last sent: %s", last_sent);
-            blink_mcp_led(MCP_PIN_ETH_LED_1, 100);
-            return TelescopeController::send_command(cmd, add_cr, send_delay_ms, recv_delay_ms);
+        lv_obj_t* commanded;
+        lv_obj_t* actual_label; // Add actual_label here
+        TeleProxy(lv_obj_t* cmd, lv_obj_t* act_lbl) : commanded(cmd), actual_label(act_lbl) {}
+
+        esp_err_t send_command(const char* cmd) override {
+            // Parse and update commanded Az/El
+            float az, el;
+            if (sscanf(cmd, "AZ %f EL %f", &az, &el) == 2) {
+                lv_label_set_text_fmt(commanded, "Commanded Az/El: %.1f / %.1f", az, el);
+                std::string message;
+                if (check_secret_combination(az, el, message)) {
+                    lv_label_set_text_fmt(commanded, "%s", message.c_str());
+                }
+            }
+            return TelescopeController::send_command(cmd);
         }
-        void process_joystick_input(const JoystickState_t* joystick_state) override {
-            TelescopeController::process_joystick_input(joystick_state);
+
+        void update_actual_label(float az, float el) {
+            if (actual_label) {
+                lv_label_set_text_fmt(actual_label, "Actual Az/El: %.1f / %.1f", az, el);
+            }
         }
     };
 
@@ -244,43 +244,18 @@ void open_telescope_control_modal(void) {
         nullptr, nullptr, nullptr, nullptr
     );
 
-    // Add labels for last sent/received commands
-    lv_obj_t* sent_label = lv_label_create(dialog.dialog, NULL);
-    lv_label_set_text(sent_label, "Last sent: ");
-    lv_obj_add_style(sent_label, LV_OBJ_PART_MAIN, &style_default_label);
-    lv_obj_align(sent_label, dialog.msg, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
+    // Add labels for commanded and actual Az/El
+    lv_obj_t* commanded_label = lv_label_create(dialog.dialog, NULL);
+    lv_label_set_text(commanded_label, "Commanded Az/El: ");
+    lv_obj_add_style(commanded_label, LV_OBJ_PART_MAIN, &style_default_label);
+    lv_obj_align(commanded_label, dialog.msg, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
 
-    lv_obj_t* recv_label = lv_label_create(dialog.dialog, NULL);
-    lv_label_set_text(recv_label, "Last recv: ");
-    lv_obj_add_style(recv_label, LV_OBJ_PART_MAIN, &style_default_label);
-    lv_obj_align(recv_label, sent_label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5);
+    lv_obj_t* actual_label = lv_label_create(dialog.dialog, NULL);
+    lv_label_set_text(actual_label, "Actual Az/El: ");
+    lv_obj_add_style(actual_label, LV_OBJ_PART_MAIN, &style_default_label);
+    lv_obj_align(actual_label, commanded_label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5);
 
-    // Allocate and initialize the TeleProxy controller only ONCE
-    telescope = new TeleProxy(sent_label, recv_label);
-    if (telescope->init() != ESP_OK) {
-        delete telescope;
-        telescope = nullptr;
-        ModalDialogParts err_dialog = create_modal_dialog(
-            "Telescope Error",
-            "Failed to initialize telescope controller.",
-            "CLOSE", [](lv_obj_t *obj, lv_event_t event) {
-                if (event == LV_EVENT_CLICKED) {
-                    close_modal_from_child(obj);
-                    modal_open = false;
-                }
-            },
-            nullptr, nullptr, nullptr, nullptr
-        );
-        lv_group_t* joy_group = lvgl_joystick_get_group();
-        lv_group_add_obj(joy_group, err_dialog.btn1);
-        return;
-    }
-
-    // Update the response callback to update the recv_label
-    g_mesh_handler.subscribe("telescope/responses", [recv_label](const Xasin::Communication::CommReceivedData& data) {
-        snprintf(last_recv, sizeof(last_recv), "%.*s", static_cast<int>(data.payload.size()), data.payload.data());
-        lv_label_set_text_fmt(recv_label, "Last recv: %s", last_recv);
-    }, 1);
+    telescope = new TeleProxy(commanded_label, actual_label);
 
     // Modal close callback
     auto close_cb = [](lv_obj_t *obj, lv_event_t event) {
@@ -320,41 +295,41 @@ static void blink_mcp_led(MCP23008_NamedPin pin, uint32_t duration_ms) {
     lv_task_once(led_task);
 }
 
-void trigger_ota_update_from_menu(void) {
-    menu_log_add(TAG_MENU_FUNC, "OTA update triggered from menu");
-    static lv_obj_t* ota_label = nullptr;
-    // Custom close callback to mark label as invalid
-    auto ota_close_cb = [](lv_obj_t *obj, lv_event_t event) {
-        if (event == LV_EVENT_CLICKED) {
-            ota_label = nullptr;
-            close_modal_from_child(obj);
-        }
-    };
-    ModalDialogParts dialog = create_modal_dialog(
-        "OTA UPDATE",
-        "Starting OTA update...\nPlease wait.",
-        "CLOSE",
-        ota_close_cb,
-        nullptr, nullptr, nullptr, nullptr
-    );
-    ota_label = dialog.msg;
-    // Lambda checks if label is still valid
-    auto update_label = [](const char* msg) {
-        if (ota_label) {
-            lv_label_set_text(ota_label, msg);
-            lv_obj_align(ota_label, NULL, LV_ALIGN_CENTER, 0, 0);
-        }
-    };
-    static OtaManager* ota_mgr = nullptr;
-    // Do not delete ota_mgr here; let the OTA task delete itself!
-    ota_mgr = new OtaManager(update_label);
-    ota_mgr->start_update();
-    // Add joystick group support for close button
-    lv_group_t* joy_group = lvgl_joystick_get_group();
-    lv_group_add_obj(joy_group, dialog.btn1);
-}
+// void trigger_ota_update_from_menu(void) {
+//     menu_log_add(TAG_MENU_FUNC, "OTA update triggered from menu");
+//     static lv_obj_t* ota_label = nullptr;
+//     // Custom close callback to mark label as invalid
+//     auto ota_close_cb = [](lv_obj_t *obj, lv_event_t event) {
+//         if (event == LV_EVENT_CLICKED) {
+//             ota_label = nullptr;
+//             close_modal_from_child(obj);
+//         }
+//     };
+//     ModalDialogParts dialog = create_modal_dialog(
+//         "OTA UPDATE",
+//         "Starting OTA update...\nPlease wait.",
+//         "CLOSE",
+//         ota_close_cb,
+//         nullptr, nullptr, nullptr, nullptr
+//     );
+//     ota_label = dialog.msg;
+//     // Lambda checks if label is still valid
+//     auto update_label = [](const char* msg) {
+//         if (ota_label) {
+//             lv_label_set_text(ota_label, msg);
+//             lv_obj_align(ota_label, NULL, LV_ALIGN_CENTER, 0, 0);
+//         }
+//     };
+//     static OtaManager* ota_mgr = nullptr;
+//     // Do not delete ota_mgr here; let the OTA task delete itself!
+//     ota_mgr = new OtaManager(update_label);
+//     ota_mgr->start_update();
+//     // Add joystick group support for close button
+//     lv_group_t* joy_group = lvgl_joystick_get_group();
+//     lv_group_add_obj(joy_group, dialog.btn1);
+// }
 
-// Helper to get log buffer as a single string (for dashboard, etc)
+// // Helper to get log buffer as a single string (for dashboard, etc)
 std::string get_menu_log_as_string(int max_lines = 16) {
     auto lines = menu_log_get_buffer();
     std::string out;
@@ -452,11 +427,4 @@ void show_recent_messages_from_menu(void) {
 
     // Load the created screen
     lv_scr_load(screen);
-}
-
-void start_wifi_from_menu(void) {
-    menu_log_add(TAG_MENU_FUNC, "Starting WiFi from menu");    
-
-    // Start the WiFi process
-    xTaskNotify(g_wifi_init_task_handle, 0, eSetBits);
 }

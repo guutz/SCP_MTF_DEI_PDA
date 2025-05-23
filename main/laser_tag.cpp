@@ -10,11 +10,8 @@
 #include "lzrtag/weapon/heavy_weapon.h"
 #include "lzrtag/weapon/beam_weapon.h"
 #include "lzrtag/weapon_defs.h"
-#include "EspMeshHandler.h"      // For g_mesh_handler
-#include "CommHandler.h"         // For CommHandler interface
 #include "xasin/mqtt/Handler.h" // For MQTT handler
 #include "lzrtag/mcp_access.h"
-#include "lzrtag/PatternModeHandler.h"
 #include <cstring>
 #include <vector> 
 
@@ -25,10 +22,6 @@
 #include "cJSON.h"
 #include "persistent_state.h"
 
-
-// Use extern for g_mesh_handler, do not define here
-extern Xasin::Communication::EspMeshHandler g_mesh_handler;
-
 static const char *TAG_LASER = "laser_tag";
 
 mcp23008_t gun_gpio_extender = {
@@ -36,10 +29,6 @@ mcp23008_t gun_gpio_extender = {
     .address = 0x27, // Gun MCP23008 address
     .current = 0
 };
-
-// Add global device ID variable (default to "0")
-std::string g_device_id = "0";
-
 
 // --- LZRTag Game State (real types) ---
 
@@ -49,16 +38,11 @@ namespace LaserTagGame {
     std::vector<LZRTag::Weapon::BaseWeapon*> weapons;
     TaskHandle_t initPlayerTask = nullptr;
     TaskHandle_t housekeepingTask = nullptr;
-    LZR::Animator* animator = nullptr; // Added
 
-    // Added from setup.h/cpp
-    LZRTag_CORE_WEAPON_STATUS main_weapon_status = LZRTag_WPN_STAT_INITIALIZING;
     Housekeeping::BatteryManager battery; // Default constructor
-    Xasin::NeoController::NeoController* rgbController = nullptr;
 
     // Forward declare internal helper for ping
     static void send_ping_req_internal();
-    PatternModeHandler* patternModeHandler = nullptr;
 }
 
 
@@ -92,70 +76,28 @@ static void housekeeping_thread(void* args) {
     }
 }
 
-void LaserTagGame::setup_effects_system() {
-    if (!rgbController) {
-        rgbController = new Xasin::NeoController::NeoController(PIN_WS2812_OUT, RMT_CHANNEL_0, WS2812_NUMBER);
-    }
-    if (!animator) {
-        animator = new LZR::Animator(
-            player,
-            weaponHandler,
-            &weapons,
-            rgbController,
-            &battery,
-            &g_mesh_handler,
-            &main_weapon_status
-        );
-        animator->start_animation_task();
-        animator->set_pattern_mode(LZR::BATTERY_LEVEL);
-    }
-    if (!patternModeHandler) {
-        patternModeHandler = new PatternModeHandler(&animator->get_buffered_colors(), &battery, rgbController);
-        patternModeHandler->switch_to_mode(LZR::IDLE); // Example mode
-    }
-    ESP_LOGI(TAG_LASER, "Effects system initialized with LZR::Animator and PatternModeHandler.");
-}
-
-void LaserTagGame::shutdown_effects_system() {
-    if (patternModeHandler) {
-        delete patternModeHandler;
-        patternModeHandler = nullptr;
-    }
-    if (animator) {
-        delete animator;
-        animator = nullptr;
-    }
-    if (rgbController) {
-        delete rgbController;
-        rgbController = nullptr;
-    }
-    ESP_LOGI(TAG_LASER, "Effects system shutdown.");
-}
-
 // Internal function to send ping request
 static void LaserTagGame::send_ping_req_internal() {
-    if (!g_mesh_handler.isConnected()) return; 
+    if (mqtt.is_disconnected()) return; 
 	uint32_t outData = xTaskGetTickCount();
-    
-	g_mesh_handler.publish("ping_signal", &outData, sizeof(outData), false, 0);
-    ESP_LOGI(TAG_LASER, "Ping request sent via g_mesh_handler.");
+
+	mqtt.publish_to("ping_signal", &outData, sizeof(outData), false, 0);
+    ESP_LOGI(TAG_LASER, "Ping request sent via mqtt.");
 }
 
 void LaserTagGame::setup_ping_handling() {
-    // Ensure LaserTagGame::mqtt (g_mesh_handler) is initialized and connected before subscribing.
+    // Ensure LaserTagGame::mqtt (mqtt) is initialized and connected before subscribing.
     // This is typically handled by the main mesh initialization logic.
-    if (g_mesh_handler.isConnected()) {
-        
-        g_mesh_handler.subscribe("ping_signal",
-            [](const Xasin::Communication::CommReceivedData &message) { // Corrected callback signature
+    if (!mqtt.is_disconnected()) {
+
+        mqtt.subscribe_to("ping_signal",
+            [](const Xasin::MQTT::MQTT_Packet &message) { // Corrected callback signature
             
             // Access topic and payload from the message object
-            // const std::string& topic = message.topic; // Assuming message.topic is std::string, if needed
+            const std::string& topic = message.topic; // Assuming message.topic is std::string, if needed
             
-            // Correctly handle message.payload as std::vector<uint8_t>
-            const std::vector<uint8_t>& payload_vec = message.payload;
-            const void* payload_data = payload_vec.data();
-            size_t payload_size = payload_vec.size();
+            const char* payload_data = message.data.data(); // Assuming message.data is std::string 
+            size_t payload_size = message.data.size(); // Assuming message.data is std::string
 
             auto system_info = cJSON_CreateObject();
             auto battery_json = cJSON_AddObjectToObject(system_info, "battery");
@@ -174,36 +116,26 @@ void LaserTagGame::setup_ping_handling() {
             cJSON_Delete(system_info);
 
             if (json_print) {
-                g_mesh_handler.publish("get/_ping", json_print, strlen(json_print), false, 1);
+                mqtt.publish_to("get/_ping", json_print, strlen(json_print), false, 1);
                 cJSON_free(json_print);
             }
         });
-        ESP_LOGI(TAG_LASER, "Ping handling (subscription via g_mesh_handler) initialized.");
+        ESP_LOGI(TAG_LASER, "Ping handling (subscription via mqtt) initialized.");
     } else {
-        ESP_LOGE(TAG_LASER, "Failed to initialize ping handling: g_mesh_handler not connected.");
-    }
-}
-
-void LaserTagGame::shutdown_ping_handling() {
-    if (!g_mesh_handler.isConnected()) {
-        g_mesh_handler.unsubscribe("ping_signal");
-        ESP_LOGI(TAG_LASER, "Ping handling (unsubscribe via g_mesh_handler) shutdown.");
+        ESP_LOGE(TAG_LASER, "Failed to initialize ping handling: mqtt not connected.");
     }
 }
 
 // --- LZRTag mode entry point ---
 bool laser_tag_mode_enter(void) {
-    // Load player info from SD (or create default if missing)
-    PlayerInfo info;
-    if (!PersistentState::player_info_exists_on_sd()) {
-        PersistentState::write_default_player_info_to_sd();
-    }
-    if (PersistentState::read_player_info_from_sd(info)) {
-        g_device_id = info.device_id;
-        ESP_LOGI(TAG_LASER, "Loaded device_id from SD: %s", g_device_id.c_str());
+    // Load player info using MenuPersistentState
+    PersistentState::MenuPersistentState menuState;
+
+    if (!g_device_id.empty()) {
+        ESP_LOGI(TAG_LASER, "Loaded device_id: %s", g_device_id.c_str());
     } else {
         g_device_id = "0";
-        ESP_LOGW(TAG_LASER, "Failed to load player info from SD, using default device_id=0");
+        ESP_LOGW(TAG_LASER, "Failed to load player info, using default device_id=0");
     }
 
     if (mcp23008_check_present(&gun_gpio_extender) != ESP_OK) {
@@ -214,19 +146,16 @@ bool laser_tag_mode_enter(void) {
     lzrtag_set_mcp23008_instance(&gun_gpio_extender);
 
     // --- Game logic setup ---
-    LaserTagGame::init(); // Sets up LaserTagGame::mqtt (g_mesh_handler) and player init task
+    LaserTagGame::init(); // Sets up LaserTagGame::mqtt (mqtt) and player init task
 
-    // Initialize systems
-    // LaserTagGame::setup_audio_system(); // Audio system is now initialized in main.cpp
-    LaserTagGame::setup_effects_system(); // Includes RGB and animator
     LaserTagGame::setup_ping_handling(); // Setup MQTT for pings
 
-    // Construct Weapon Handler with Audio, CommHandler (g_mesh_handler), and Player instance
+    // Construct Weapon Handler with Audio, CommHandler (mqtt), and Player instance
     if (!LaserTagGame::player) {
         ESP_LOGE(TAG_LASER, "Player not initialized before weapon handler creation!");
         return false;
     }
-    LaserTagGame::weaponHandler = new LZRTag::Weapon::Handler(audioManager, &g_mesh_handler, LaserTagGame::player);
+    LaserTagGame::weaponHandler = new LZRTag::Weapon::Handler(g_sound_manager, &mqtt, LaserTagGame::player);
 
     // Initialize IR system within the weapon handler
     LaserTagGame::weaponHandler->init_ir_system();
@@ -252,15 +181,10 @@ bool laser_tag_mode_enter(void) {
         xTaskCreate(housekeeping_thread, "Housekeeping", 4096, nullptr, 5, &LaserTagGame::housekeepingTask);
     }
 
-    LaserTagGame::main_weapon_status = LZRTag_WPN_STAT_NOMINAL; // Set status after setup
-
     // From setup.cpp: LZR::FX::target_mode = LZR::PLAYER_DECIDED; after a delay
     // This could be handled by a delayed task or a state machine within the game logic
     // For now, setting it after a short delay as in original setup()
     vTaskDelay(pdMS_TO_TICKS(100)); // Small delay for systems to settle
-    if (LaserTagGame::animator) {
-        LaserTagGame::animator->set_pattern_mode(LZR::PLAYER_DECIDED);
-    }
 
     ESP_LOGI(TAG_LASER, "LZRTag mode entered and systems initialized.");
     return true;
@@ -278,12 +202,9 @@ void laser_tag_mode_exit(void) {
         LaserTagGame::housekeepingTask = nullptr;
     }
     // Orderly shutdown of systems
-    LaserTagGame::shutdown_ping_handling();
     if (LaserTagGame::weaponHandler) {
         LaserTagGame::weaponHandler->shutdown_ir_system(); // Call new shutdown method
     }
-    LaserTagGame::shutdown_effects_system(); // This will now delete the animator
-    // LaserTagGame::shutdown_audio_system(); // Audio system is managed in main.cpp
 
     // Original cleanup
     delete LaserTagGame::player; LaserTagGame::player = nullptr;
@@ -298,14 +219,14 @@ void LaserTagGame::init_player_task(void *param) {
     ESP_LOGI(TAG_LASER, "Player initialization task started.");
 
     // Wait for the mesh handler to be started
-    // while (!g_mesh_handler.isConnected()) {
+    // while (!mqtt.isConnected()) {
     //     ESP_LOGI(TAG_LASER, "Waiting for EspMeshHandler to connect...");
     //     vTaskDelay(pdMS_TO_TICKS(1000));
     // }
     // ESP_LOGI(TAG_LASER, "EspMeshHandler is connected. Initializing player.");
 
     // Use g_device_id instead of hardcoded "0"
-    LaserTagGame::player = new LZR::Player(g_device_id.c_str(), g_mesh_handler);
+    LaserTagGame::player = new LZR::Player(g_device_id, mqtt);
     LaserTagGame::player->init();
     ESP_LOGI(TAG_LASER, "Player object initialized.");
 
@@ -322,7 +243,7 @@ void LaserTagGame::init() {
 
     // Create a task to initialize the player
     // This is done because player initialization might depend on network connectivity
-    // which is established by g_mesh_handler, and g_mesh_handler.start() is called
+    // which is established by mqtt, and mqtt.start() is called
     // from wifi_init_task which runs separately.
     xTaskCreate(LaserTagGame::init_player_task, "init_player_task", 4096, NULL, 5, &initPlayerTask);
     ESP_LOGI(TAG_LASER, "Player initialization task created.");
@@ -330,10 +251,7 @@ void LaserTagGame::init() {
 
 // Call this from your animation loop or main tick
 void LaserTagGame::tick() {
-    if (patternModeHandler) {
-        patternModeHandler->tick();
-    }
-    if (animator) {
-        // Optionally, keep animator tick if needed
+    if (LaserTagGame::player) {
+        LaserTagGame::player->tick();
     }
 }
