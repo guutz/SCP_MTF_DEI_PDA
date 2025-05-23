@@ -10,6 +10,9 @@
 #include <vector>
 #include <sstream> // For parsing lines
 
+// Forward declaration for visibility parsing function
+MenuItemVisibilityCondition parse_visibility_condition(const std::string& visibility_str);
+
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 #include "driver/spi_master.h"
@@ -488,6 +491,7 @@ bool parse_menu_definition_file(const char* file_path_on_sd) {
             MenuItemDefinition item;
             item.render_type = RENDER_AS_BUTTON; // This is a button
             item.action = ACTION_NONE; // Default action
+            item.visibility.type = VISIBILITY_ALWAYS; // Default visibility
 
             std::string btn_content = line.substr(7); 
             std::vector<std::string> parts;
@@ -506,6 +510,22 @@ bool parse_menu_definition_file(const char* file_path_on_sd) {
                  item.action_target = trim_string(action_target_part_full);
             } else {
                  item.action_target = ""; // Ensure it's initialized
+            }
+
+            // Check if there's a visibility condition after the action target
+            // Format: BUTTON:label:action:target:VISIBILITY:condition
+            size_t visibility_pos = btn_content.find(":VISIBILITY:");
+            if (visibility_pos != std::string::npos) {
+                std::string visibility_str = btn_content.substr(visibility_pos + 12); // Skip ":VISIBILITY:"
+                item.visibility = parse_visibility_condition(trim_string(visibility_str));
+                
+                // Remove visibility part from action_target if it was included
+                size_t target_end = item.action_target.find(":VISIBILITY:");
+                if (target_end != std::string::npos) {
+                    item.action_target = trim_string(item.action_target.substr(0, target_end));
+                }
+                
+                ESP_LOGV(TAG_SD, "Button '%s' has visibility condition type: %d", item.text_to_display.c_str(), item.visibility.type);
             }
 
             if (action_type_str_parsed == "SUBMENU") item.action = ACTION_NAVIGATE_SUBMENU;

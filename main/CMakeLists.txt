@@ -19,5 +19,6 @@ idf_component_register(
     "laser_tag.cpp"
     "menu_log.cpp"
     "persistent_state.cpp"
+    "menu_visibility.cpp"
     INCLUDE_DIRS "."
 )

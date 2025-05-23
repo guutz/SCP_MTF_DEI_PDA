@@ -38,6 +38,9 @@
 #include "lvgl.h"
 #include "lvgl_helpers.h"
 
+// Project Specific Headers for PersistentState
+#include "persistent_state.h" 
+
 //                       ..,,,,,,,,,,,,,,,,.                                                                      
 //                      .%@&%%##########%%@@(.                                                                    
 //                      ,&&(,............*%@&,                                                                    
@@ -143,7 +146,7 @@ static void initTask(void *pvParameter) {
 
     // Schedule SD card and UI init as LVGL tasks
     menu_log_add(TAG_MAIN, "[InitTask] Scheduling SD card initialization as LVGL task.");
-    lv_task_t* sd_init_task = lv_task_create(sd_init, 0, LV_TASK_PRIO_MID, NULL);
+    lv_task_t* sd_init_task = lv_task_create(sd_init_and_persistent_state, 0, LV_TASK_PRIO_MID, NULL); // Renamed and using new function
     lv_task_once(sd_init_task);
 
     menu_log_add(TAG_MAIN, "[InitTask] Scheduling UI init as LVGL task.");
@@ -156,6 +159,22 @@ static void initTask(void *pvParameter) {
 
     menu_log_add(TAG_MAIN, "[InitTask] Initialization complete. Deleting self.");
     vTaskDelete(NULL);
+}
+
+// New combined SD init and PersistentState init task
+void sd_init_and_persistent_state(lv_task_t *task) {
+    (void)task; // Unused parameter
+    ESP_LOGI(TAG_MAIN, "Starting SD card and Persistent State initialization...");
+    sd_init(); // Initialize SD card first
+    
+    // Now that SD is up, initialize persistent state
+    if (PersistentState::initialize_default_persistent_state_if_needed()) {
+        ESP_LOGI(TAG_MAIN, "Persistent state initialized successfully.");
+    } else {
+        ESP_LOGE(TAG_MAIN, "Failed to initialize persistent state!");
+        // Handle error appropriately - perhaps a critical error screen or retry?
+    }
+    ESP_LOGI(TAG_MAIN, "SD card and Persistent State initialization complete.");
 }
 
 // Audio processing task

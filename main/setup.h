@@ -29,6 +29,7 @@ extern Housekeeping::BatteryManager g_battery_manager; // Defined in main.cpp
 
 // --- MQTT Configuration ---
 #define MQTT_BROKER_URI_STR "mqtts://0fed07f982184f4db2a5cbd8f181ccae.s1.eu.hivemq.cloud:8883" // IMPORTANT: Change to your MQTT broker URI
+#define MQTT_MENU_UPDATE_TOPIC "pda/menu/update" // Topic for receiving menu content availability updates
 
 // --- Terminal Style Definitions ---
 
